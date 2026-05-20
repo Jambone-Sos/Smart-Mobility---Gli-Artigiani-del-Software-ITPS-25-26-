@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART Mobility - Sprint 1</title>
+    <meta name="description" content="Pannello di Collaudo E2E per SMART Mobility System - Sprint 1">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Leaflet (Libreria Mappa Open Source) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ================================================================
+         SEZIONE 1: SCHERMATA DI AUTENTICAZIONE (IF-UT.01)
+         Visibile all'apertura dell'app. Scompare dopo il login/registrazione.
+         ================================================================ -->
+    <div id="auth-screen" class="overlay">
+        <div class="auth-card">
+            <h1>SMART Mobility</h1>
+            <p class="subtitle">Accedi o Registrati per esplorare la flotta</p>
+
+            <!-- Tab di selezione Login / Registrazione -->
+            <div class="tabs" role="tablist">
+                <button id="tab-login" class="tab active" role="tab">Login</button>
+                <button id="tab-register" class="tab" role="tab">Registrati</button>
+            </div>
+
+            <!-- Form Login -->
+            <form id="form-login" class="form-vertical">
+                <input type="text" id="login-nome" placeholder="Nome Utente" required>
+                <button type="submit" class="btn btn-primary">Accedi</button>
+            </form>
+
+            <!-- Form Registrazione -->
+            <form id="form-register" class="form-vertical" style="display: none;">
+                <input type="text" id="register-nome" placeholder="Nome Utente" required>
+                <input type="text" id="register-doc" placeholder="Documento (es. id.pdf)">
+                <button type="submit" class="btn btn-primary">Registrati</button>
+            </form>
+
+            <!-- Messaggi di errore auth -->
+            <p id="auth-feedback" class="feedback-msg"></p>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         SEZIONE 2: INTERFACCIA PRINCIPALE (dopo login)
+         Contiene la barra profilo, le due viste e la navigazione.
+         ================================================================ -->
+    <div id="app-screen" class="app-screen" style="display: none;">
+
+        <!-- 2A. Barra Profilo (sempre visibile in alto) -->
+        <header id="profile-bar" class="profile-bar glass-panel">
+            <div class="profile-left">
+                <span id="display-nome" class="profile-name">Utente</span>
+                <span id="display-saldo" class="profile-badge">€ 0.00</span>
+            </div>
+            <button id="btn-logout" class="btn btn-outline btn-small">Esci</button>
+        </header>
+
+        <!-- 2B. VISTA MAPPA (IF-UT.03 - IF-UT.05) -->
+        <div id="view-map" class="view active-view">
+            <div id="map"></div>
+        </div>
+
+        <!-- 2C. VISTA AREA PERSONALE (Dashboard) -->
+        <div id="view-dashboard" class="view" style="display: none;">
+            <div class="dashboard-scroll">
+
+                <h2 class="dashboard-title">Area Personale</h2>
+
+                <!-- Card: Portafoglio (IF-UT.02) e Promozioni (IF-UT.14) -->
+                <section class="card">
+                    <h3>Portafoglio & Promozioni</h3>
+                    <div class="form-row">
+                        <input type="text" id="input-carta" placeholder="Numero Carta">
+                        <input type="number" id="input-importo" placeholder="Importo €" min="1">
+                        <button id="btn-recharge" class="btn btn-primary">Ricarica</button>
+                    </div>
+                    <hr>
+                    <div class="form-row">
+                        <input type="text" id="input-promo" placeholder="Codice Promo (es. SCONTO50)">
+                        <button id="btn-apply-promo" class="btn btn-secondary">Applica</button>
+                    </div>
+                </section>
+
+                <!-- Card: Storico Corse (IF-UT.12) -->
+                <section class="card">
+                    <h3>Storico Corse</h3>
+                    <button id="btn-load-history" class="btn btn-secondary btn-small">Aggiorna</button>
+                    <ul id="history-list" class="history-list">
+                        <li class="history-empty">Nessuna corsa effettuata.</li>
+                    </ul>
+                </section>
+
+                <!-- Card: Assistenza (IF-UT.13, IF-UT.15, IF-UT.16) -->
+                <section class="card">
+                    <h3>Assistenza e Valutazione</h3>
+                    <div class="form-row">
+                        <input type="text" id="input-chat" placeholder="Scrivi al supporto...">
+                        <button id="btn-send-chat" class="btn btn-secondary">Invia</button>
+                    </div>
+                    <div class="form-row">
+                        <input type="number" id="input-rating" placeholder="Voto 1-5" min="1" max="5">
+                        <button id="btn-send-rating" class="btn btn-secondary">Valuta</button>
+                    </div>
+                    <hr>
+                    <button id="btn-sos" class="btn btn-danger btn-full">EMERGENZA (SOS)</button>
+                </section>
+            </div>
+        </div>
+
+        <!-- 2D. PANNELLI FLOTTANTI (Prenotazione e Corsa)
+             Posizionati FUORI dalle viste, a livello di #app-screen,
+             per evitare problemi di z-index con la mappa. -->
+
+        <!-- Pannello Prenotazione Attiva (IF-UT.07 - IF-UT.09) -->
+        <div id="booking-panel" class="action-panel glass-panel hidden">
+            <h3>Mezzo Prenotato</h3>
+            <p id="booking-info"></p>
+            <div class="timer" id="booking-timer">Scadenza: 10:00</div>
+            <div class="action-buttons">
+                <button id="btn-cancel" class="btn btn-secondary">Annulla</button>
+                <button id="btn-unlock" class="btn btn-primary">Sblocca Mezzo</button>
+            </div>
+        </div>
+
+        <!-- Pannello Corsa in Corso (IF-UT.18, IF-UT.11) -->
+        <div id="ride-panel" class="action-panel glass-panel hidden">
+            <h3>Corsa in Corso</h3>
+            <p id="ride-info"></p>
+            <div class="timer" id="ride-timer">Durata: 00:00</div>
+            <div class="action-buttons">
+                <button id="btn-end-ride" class="btn btn-danger">Termina e Paga</button>
+            </div>
+        </div>
+
+        <!-- 2E. BARRA DI NAVIGAZIONE INFERIORE -->
+        <nav id="bottom-nav" class="bottom-nav glass-panel">
+            <button id="nav-map" class="nav-btn active">🗺️ Mappa</button>
+            <button id="nav-dashboard" class="nav-btn">👤 Profilo</button>
+        </nav>
+
+        <!-- Toast per notifiche rapide -->
+        <div id="toast" class="toast hidden"></div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,419 @@
+/* =================================================================
+   SMART Mobility — Foglio di Stile (Sprint 1)
+   -----------------------------------------------------------------
+   Organizzazione:
+     1. Variabili e Reset
+     2. Tipografia e Utilità
+     3. Componenti Base (Bottoni, Input, Card)
+     4. Layout: Schermata Autenticazione
+     5. Layout: App Screen (Profilo, Viste, Nav)
+     6. Componente: Mappa Leaflet
+     7. Componente: Dashboard (Area Personale)
+     8. Componente: Pannelli Flottanti (Prenotazione / Corsa)
+     9. Componente: Toast Notifiche
+    10. Override: Popup Leaflet
+   ================================================================= */
+
+/* -----------------------------------------------------------------
+   1. VARIABILI E RESET
+   ----------------------------------------------------------------- */
+:root {
+    --color-primary: #4F46E5;
+    --color-primary-hover: #4338CA;
+    --color-secondary: #E5E7EB;
+    --color-danger: #EF4444;
+    --color-danger-hover: #DC2626;
+    --color-success: #10B981;
+    --color-text: #1F2937;
+    --color-text-muted: #6B7280;
+    --color-bg: #f3f4f6;
+    --color-white: #ffffff;
+    --glass-bg: rgba(255, 255, 255, 0.85);
+    --glass-border: rgba(255, 255, 255, 0.6);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.2);
+    --radius: 12px;
+    --radius-lg: 16px;
+    --font: 'Inter', sans-serif;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font);
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    overflow: hidden;
+    height: 100vh;
+}
+
+/* -----------------------------------------------------------------
+   2. TIPOGRAFIA E UTILITÀ
+   ----------------------------------------------------------------- */
+h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
+
+.subtitle {
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 1.5rem;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #E5E7EB;
+    margin: 1rem 0;
+}
+
+.hidden { display: none !important; }
+
+/* -----------------------------------------------------------------
+   3. COMPONENTI BASE (Bottoni, Input, Card)
+   ----------------------------------------------------------------- */
+input {
+    padding: 0.7rem 1rem;
+    border: 1px solid #D1D5DB;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+input:focus { border-color: var(--color-primary); }
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.65rem 1.25rem;
+    border-radius: var(--radius);
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    white-space: nowrap;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-primary   { background: var(--color-primary); color: white; }
+.btn-primary:hover { background: var(--color-primary-hover); }
+
+.btn-secondary { background: var(--color-secondary); color: var(--color-text); }
+.btn-secondary:hover { background: #D1D5DB; }
+
+.btn-danger    { background: var(--color-danger); color: white; }
+.btn-danger:hover { background: var(--color-danger-hover); }
+
+.btn-outline   { background: transparent; border: 1px solid #D1D5DB; color: var(--color-text); }
+.btn-outline:hover { background: #F3F4F6; }
+
+.btn-small     { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+.btn-full      { width: 100%; }
+
+.card {
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.form-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+.form-row:last-child { margin-bottom: 0; }
+.form-row input { flex: 1; min-width: 0; }
+
+.form-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-md);
+    border-radius: var(--radius-lg);
+}
+
+/* -----------------------------------------------------------------
+   4. LAYOUT: SCHERMATA AUTENTICAZIONE (IF-UT.01)
+   ----------------------------------------------------------------- */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(6px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9000;
+}
+
+.auth-card {
+    background: var(--color-white);
+    border-radius: 20px;
+    padding: 2.5rem;
+    width: 90%;
+    max-width: 380px;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+}
+
+.tabs {
+    display: flex;
+    background: #F3F4F6;
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+}
+.tab {
+    flex: 1;
+    padding: 0.7rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--color-text-muted);
+    transition: all 0.2s;
+}
+.tab.active {
+    background: white;
+    color: var(--color-primary);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.feedback-msg {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    min-height: 1.2em;
+}
+
+/* -----------------------------------------------------------------
+   5. LAYOUT: APP SCREEN
+   ----------------------------------------------------------------- */
+.app-screen {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+/* Barra Profilo (fissa in alto, centrata) */
+.profile-bar {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 800;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 1.25rem;
+    width: 92%;
+    max-width: 700px;
+}
+.profile-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+.profile-name { font-weight: 600; }
+.profile-badge {
+    background: #ECFDF5;
+    color: var(--color-success);
+    font-weight: 700;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.9rem;
+}
+
+/* Viste (Mappa e Dashboard) */
+.view {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Barra di Navigazione Inferiore */
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 70px;
+    z-index: 800;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    border-radius: 18px 18px 0 0;
+    padding: 0;
+}
+.nav-btn {
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 0.5rem 1.5rem;
+    border-radius: var(--radius);
+    transition: all 0.2s;
+}
+.nav-btn.active {
+    color: var(--color-primary);
+    background: rgba(79, 70, 229, 0.08);
+}
+
+/* -----------------------------------------------------------------
+   6. COMPONENTE: MAPPA LEAFLET (IF-UT.03 - IF-UT.05)
+   ----------------------------------------------------------------- */
+#map {
+    width: 100%;
+    height: 100%;
+}
+
+/* -----------------------------------------------------------------
+   7. COMPONENTE: DASHBOARD — AREA PERSONALE
+   ----------------------------------------------------------------- */
+.dashboard-scroll {
+    padding: 80px 20px 90px 20px; /* spazio per header e nav inferiore */
+    max-width: 700px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    overflow-y: auto;
+    height: 100%;
+}
+
+.dashboard-title {
+    margin-bottom: 0;
+}
+
+.history-list {
+    list-style: none;
+    padding: 0;
+    margin-top: 0.75rem;
+}
+.history-list li {
+    padding: 0.6rem 0;
+    border-bottom: 1px solid #F3F4F6;
+    font-size: 0.9rem;
+    display: flex;
+    justify-content: space-between;
+}
+.history-empty {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+/* -----------------------------------------------------------------
+   8. COMPONENTE: PANNELLI FLOTTANTI — Prenotazione / Corsa
+      (IF-UT.07 - IF-UT.09, IF-UT.18, IF-UT.11)
+      Posizionati a livello di #app-screen (NON dentro la mappa)
+      per garantire visibilità sopra qualsiasi vista.
+   ----------------------------------------------------------------- */
+.action-panel {
+    position: fixed;
+    bottom: 86px; /* sopra la bottom-nav (70px + 16px di margine) */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 900; /* Sopra mappa (1) e nav (800), sotto overlay auth (9000) */
+    width: 90%;
+    max-width: 420px;
+    padding: 1.5rem;
+    text-align: center;
+    animation: panelSlideUp 0.3s ease-out;
+}
+
+@keyframes panelSlideUp {
+    from { opacity: 0; transform: translate(-50%, 16px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.action-panel .timer {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    margin: 0.75rem 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+}
+
+/* -----------------------------------------------------------------
+   9. COMPONENTE: TOAST NOTIFICHE
+   ----------------------------------------------------------------- */
+.toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-text);
+    color: white;
+    padding: 0.65rem 1.5rem;
+    border-radius: 999px;
+    z-index: 9500;
+    font-weight: 500;
+    font-size: 0.9rem;
+    box-shadow: var(--shadow-md);
+    animation: toastFadeIn 0.25s ease-out;
+}
+
+@keyframes toastFadeIn {
+    from { opacity: 0; transform: translate(-50%, -8px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* -----------------------------------------------------------------
+   10. OVERRIDE: POPUP LEAFLET
+   ----------------------------------------------------------------- */
+.leaflet-popup-content-wrapper {
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+}
+.leaflet-popup-content {
+    margin: 14px;
+    font-family: var(--font);
+}
+.leaflet-popup-content h4 { margin: 0 0 6px 0; font-size: 1.05rem; }
+.leaflet-popup-content p  { margin: 0 0 10px 0; font-size: 0.88rem; color: var(--color-text-muted); }
+.popup-book-btn {
+    width: 100%;
+    display: block;
+    padding: 0.55rem;
+    background: var(--color-primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+.popup-book-btn:hover { background: var(--color-primary-hover); }
