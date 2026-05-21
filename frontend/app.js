@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', function () {
     /* Anteprima nome file scelto */
     document.getElementById('register-doc').addEventListener('change', function () {
         document.getElementById('file-label-text').textContent =
-            this.files[0] ? this.files[0].name : 'Documento d\'identità (facoltativo)';
+            this.files[0] ? this.files[0].name : 'Documento d\'identità *';
     });
 
     /* Sidebar */
@@ -137,22 +137,26 @@ async function handleLogin() {
 }
 
 async function handleRegister() {
+    var username = document.getElementById('register-username').value.trim();
     var nome     = document.getElementById('register-nome').value.trim();
     var cognome  = document.getElementById('register-cognome').value.trim();
     var email    = document.getElementById('register-email').value.trim();
     var password = document.getElementById('register-password').value;
     var docFile  = document.getElementById('register-doc').files[0];
 
+    if (!username) return showAuthError('Inserisci un username');
     if (!nome)     return showAuthError('Inserisci un nome');
     if (!email)    return showAuthError('Inserisci una email');
     if (!password || password.length < 6) return showAuthError('La password deve essere di almeno 6 caratteri');
+    if (!docFile)  return showAuthError('Inserisci il documento d\'identità');
 
     var formData = new FormData();
+    formData.append('username', username);
     formData.append('nome', nome);
     if (cognome)  formData.append('cognome', cognome);
     formData.append('email', email);
     formData.append('password', password);
-    if (docFile) formData.append('documento', docFile);
+    formData.append('documento', docFile);
 
     try {
         var res  = await fetch(API_BASE + '/utenti/registrazione', { method: 'POST', body: formData });

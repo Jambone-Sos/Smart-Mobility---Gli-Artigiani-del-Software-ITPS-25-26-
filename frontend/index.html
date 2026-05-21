@@ -31,8 +31,8 @@ npm<!DOCTYPE html>
 
             <!-- Login -->
             <form id="form-login" class="auth-form">
-                <input type="email"    id="login-email"    class="auth-input"
-                       placeholder="Email" autocomplete="email">
+                <input type="text"    id="login-email"    class="auth-input"
+                       placeholder="Email o Username" autocomplete="username">
                 <input type="password" id="login-password" class="auth-input"
                        placeholder="Password" autocomplete="current-password">
                 <button type="submit" class="btn-auth">Accedi →</button>
@@ -40,6 +40,7 @@ npm<!DOCTYPE html>
 
             <!-- Registrazione -->
             <form id="form-register" class="auth-form" style="display:none" enctype="multipart/form-data">
+                <input type="text"     id="register-username" class="auth-input" placeholder="Username *" required>
                 <input type="text"     id="register-nome"     class="auth-input" placeholder="Nome *" required>
                 <input type="text"     id="register-cognome"  class="auth-input" placeholder="Cognome">
                 <input type="email"    id="register-email"    class="auth-input" placeholder="Email *" required>
@@ -47,7 +48,7 @@ npm<!DOCTYPE html>
                        placeholder="Password (min. 6 caratteri) *" required>
                 <label class="file-drop" for="register-doc">
                     <span class="file-drop-icon">📄</span>
-                    <span id="file-label-text">Documento d'identità (facoltativo)</span>
+                    <span id="file-label-text">Documento d'identità *</span>
                     <span class="file-drop-hint">JPG, PNG o PDF · max 5 MB</span>
                 </label>
                 <input type="file" id="register-doc" accept=".jpg,.jpeg,.png,.pdf" style="display:none">

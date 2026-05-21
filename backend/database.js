@@ -54,6 +54,7 @@ function initSchema() {
     db.run(`
         CREATE TABLE IF NOT EXISTS utenti (
             id TEXT PRIMARY KEY,
+            username TEXT UNIQUE,
             nome TEXT NOT NULL,
             cognome TEXT,
             email TEXT UNIQUE,
@@ -131,6 +132,7 @@ function initSchema() {
 
     /* Migrazioni sicure per DB esistenti (IF colonna già presente → ignorata) */
     var migrations = [
+        'ALTER TABLE utenti ADD COLUMN username TEXT',
         'ALTER TABLE utenti ADD COLUMN cognome TEXT',
         'ALTER TABLE utenti ADD COLUMN password_hash TEXT',
         'ALTER TABLE corse ADD COLUMN prenotazione_id TEXT',
@@ -190,6 +192,7 @@ function rowToUtente(row) {
     if (!row) return null;
     return {
         id: row.id,
+        username: row.username || null,
         nome: row.nome,
         cognome: row.cognome || null,
         email: row.email,
@@ -231,12 +234,17 @@ var utenti = {
         if (!row) return null;
         return { raw: row, utente: rowToUtente(row) };
     },
+    findByEmailOrUsername: function (identifier) {
+        var row = queryOne('SELECT * FROM utenti WHERE email = ? OR username = ?', [identifier, identifier]);
+        if (!row) return null;
+        return { raw: row, utente: rowToUtente(row) };
+    },
     create: function (data) {
         runSql(
-            `INSERT INTO utenti (id, nome, cognome, email, password_hash, saldo, sconto_attivo, stato,
+            `INSERT INTO utenti (id, username, nome, cognome, email, password_hash, saldo, sconto_attivo, stato,
              prenotazione_attuale, corsa_attuale, documento_url)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [data.id, data.nome, data.cognome || null, data.email || null, data.passwordHash || null,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [data.id, data.username || null, data.nome, data.cognome || null, data.email || null, data.passwordHash || null,
              data.saldo || 0, data.scontoAttivo ? 1 : 0, data.stato || 'libero',
              data.prenotazioneAttuale || null, data.corsaAttuale || null, data.documentoUrl || null]
         );

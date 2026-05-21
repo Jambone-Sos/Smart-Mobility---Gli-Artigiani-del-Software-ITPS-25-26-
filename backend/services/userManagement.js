@@ -45,21 +45,25 @@ function inviaNotificaSimulata(email, oggetto) {
  * POST /api/utenti/registrazione
  */
 router.post('/registrazione', upload.single('documento'), function (req, res) {
+    var username = req.body.username;
     var nome = req.body.nome;
     var cognome = req.body.cognome;
     var email = req.body.email;
     var password = req.body.password;
 
+    if (!username) return res.status(400).json({ error: 'Il campo "username" è obbligatorio' });
     if (!nome) return res.status(400).json({ error: 'Il campo "nome" è obbligatorio' });
     if (!email) return res.status(400).json({ error: 'Il campo "email" è obbligatorio' });
     if (!password || password.length < 6) {
         return res.status(400).json({ error: 'La password deve essere di almeno 6 caratteri' });
     }
+    if (!req.file) {
+        return res.status(400).json({ error: 'Il documento d\'identità è obbligatorio' });
+    }
 
-    /* UC-01 scenario B: email già registrata */
-    var existing = db.utenti.findByEmail(email.trim().toLowerCase());
-    if (existing) {
-        return res.status(409).json({ error: 'Email già registrata. Accedi con le tue credenziali.' });
+    /* UC-01 scenario B: email o username già registrati */
+    if (db.utenti.findByEmailOrUsername(email.trim().toLowerCase()) || db.utenti.findByEmailOrUsername(username.trim())) {
+        return res.status(409).json({ error: 'Email o Username già in uso. Accedi con le tue credenziali.' });
     }
 
     var documentoUrl = req.file ? '/uploads/' + path.basename(req.file.path) : null;
@@ -68,6 +72,7 @@ router.post('/registrazione', upload.single('documento'), function (req, res) {
 
     var nuovoUtente = db.utenti.create({
         id: newUserId,
+        username: username.trim(),
         nome: nome.trim(),
         cognome: cognome ? cognome.trim() : null,
         email: email.trim().toLowerCase(),
@@ -100,10 +105,10 @@ router.post('/login', function (req, res) {
     var email = req.body.email;
     var password = req.body.password;
     if (!email || !password) {
-        return res.status(400).json({ error: 'Email e password sono obbligatori' });
+        return res.status(400).json({ error: 'Email/Username e password sono obbligatori' });
     }
 
-    var result = db.utenti.findByEmail(email.trim().toLowerCase());
+    var result = db.utenti.findByEmailOrUsername(email.trim().toLowerCase()) || db.utenti.findByEmailOrUsername(email.trim());
     if (!result) return res.status(404).json({ error: 'Utente non trovato. Registrati prima.' });
 
     var raw = result.raw;
