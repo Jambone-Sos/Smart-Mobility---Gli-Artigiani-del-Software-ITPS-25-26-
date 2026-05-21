@@ -1,610 +1,676 @@
-/* =================================================================
-   SMART Mobility — Motore JavaScript del Client (Sprint 1)
-   -----------------------------------------------------------------
-   Questo file gestisce tutta la logica del frontend tramite Vanilla JS.
-   È organizzato in sezioni logiche che corrispondono ai servizi backend:
+/* ================================================================
+   SMART Mobility — app.js  v3  (JWT auth + Lime-inspired UI)
+   ================================================================ */
 
-     1. CONFIGURAZIONE     — Costanti, stato applicazione, riferimenti DOM
-     2. INIZIALIZZAZIONE   — Event listeners (DOMContentLoaded)
-     3. GESTIONE UI        — Cambio vista, tabs, toast, aggiornamento profilo
-     4. AUTENTICAZIONE     — Login, Registrazione, Logout (IF-UT.01)
-     5. MAPPA E VEICOLI    — Leaflet, marker, popup (IF-UT.03 - IF-UT.05)
-     6. PRENOTAZIONE       — Prenota, annulla, scadenza (IF-UT.07 - IF-UT.09)
-     7. CORSA              — Sblocco, timer, termine e pagamento (IF-UT.18, IF-UT.11)
-     8. DASHBOARD          — Ricarica, promo, storico, chat, SOS (IF-UT.02, 12-16)
-     9. TIMER              — Countdown prenotazione e cronometro corsa
-   ================================================================= */
-
-
-/* =================================================================
-   1. CONFIGURAZIONE
-   ================================================================= */
-
-/** Indirizzo base dell'API Gateway (backend) */
+/* ── 1. CONFIGURAZIONE ─────────────────────────────────────────── */
 var API_BASE = 'http://localhost:3000/api';
 
-/** Stato globale dell'applicazione lato client */
+var MAP_TILES = {
+    satellite: [
+        {
+            url:  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            opts: { attribution: '© Esri · Earthstar Geographics', maxZoom: 20 }
+        },
+        {
+            url:  'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+            opts: { maxZoom: 20, opacity: 0.75 }
+        }
+    ],
+    dark: [
+        {
+            url:  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            opts: { attribution: '© OpenStreetMap © CARTO', maxZoom: 20, subdomains: 'abcd' }
+        }
+    ],
+    light: [
+        {
+            url:  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+            opts: { attribution: '© OpenStreetMap © CARTO', maxZoom: 20, subdomains: 'abcd' }
+        }
+    ]
+};
+
+var MAP_STYLE_LABELS = { satellite: 'Satellite', dark: 'Scuro', light: 'Chiaro' };
+
 var state = {
-    user: null,              // Oggetto utente corrente (dal backend)
-    vehicles: [],            // Lista veicoli caricati dal backend
-    map: null,               // Istanza della mappa Leaflet
-    markers: [],             // Array dei marker Leaflet attivi
-    bookingTimerInterval: null,  // ID del timer di scadenza prenotazione
-    rideTimerInterval: null      // ID del timer della corsa attiva
+    user:                 null,
+    token:                null,   /* JWT Bearer Token (IFC-01) */
+    vehicles:             [],
+    map:                  null,
+    markers:              [],
+    tileLayers:           [],
+    mapStyle:             'satellite',
+    mapPickerInit:        false,
+    bookingTimerInterval: null,
+    rideTimerInterval:    null,
+    vehicleFilter:        'all',
+    filterPanelOpen:      false,
+    sidebarOpen:          false,
+    selectedRating:       0
 };
 
-/** Riferimenti agli elementi DOM principali */
-var DOM = {
-    // Schermate
-    authScreen:    document.getElementById('auth-screen'),
-    appScreen:     document.getElementById('app-screen'),
-    // Profilo
-    displayNome:   document.getElementById('display-nome'),
-    displaySaldo:  document.getElementById('display-saldo'),
-    // Viste
-    viewMap:       document.getElementById('view-map'),
-    viewDashboard: document.getElementById('view-dashboard'),
-    // Nav
-    navMap:        document.getElementById('nav-map'),
-    navDashboard:  document.getElementById('nav-dashboard'),
-    // Auth
-    formLogin:     document.getElementById('form-login'),
-    formRegister:  document.getElementById('form-register'),
-    authFeedback:  document.getElementById('auth-feedback'),
-    // Pannelli azione
-    bookingPanel:  document.getElementById('booking-panel'),
-    ridePanel:     document.getElementById('ride-panel'),
-    // Toast
-    toast:         document.getElementById('toast')
-};
+/* ── 2. HELPER HEADERS ─────────────────────────────────────────── */
+function authHeaders() {
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + state.token
+    };
+}
 
+/* ── 3. INIT ────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function () {
 
-/* =================================================================
-   2. INIZIALIZZAZIONE — Event Listeners
-   ================================================================= */
+    /* Auth */
+    document.getElementById('tab-login').addEventListener('click', function () { switchAuthTab('login'); });
+    document.getElementById('tab-register').addEventListener('click', function () { switchAuthTab('register'); });
+    document.getElementById('form-login').addEventListener('submit', function (e) { e.preventDefault(); handleLogin(); });
+    document.getElementById('form-register').addEventListener('submit', function (e) { e.preventDefault(); handleRegister(); });
 
-document.addEventListener('DOMContentLoaded', function() {
+    /* Anteprima nome file scelto */
+    document.getElementById('register-doc').addEventListener('change', function () {
+        document.getElementById('file-label-text').textContent =
+            this.files[0] ? this.files[0].name : 'Documento d\'identità (facoltativo)';
+    });
 
-    // --- Autenticazione ---
-    document.getElementById('tab-login').addEventListener('click', function() { switchTab('login'); });
-    document.getElementById('tab-register').addEventListener('click', function() { switchTab('register'); });
-    DOM.formLogin.addEventListener('submit', function(e) { e.preventDefault(); handleLogin(); });
-    DOM.formRegister.addEventListener('submit', function(e) { e.preventDefault(); handleRegister(); });
-    document.getElementById('btn-logout').addEventListener('click', handleLogout);
+    /* Sidebar */
+    document.getElementById('btn-sidebar-toggle').addEventListener('click', openSidebar);
+    document.getElementById('btn-close-sidebar').addEventListener('click', closeSidebar);
+    document.getElementById('sidebar-backdrop').addEventListener('click', closeSidebar);
 
-    // --- Navigazione tra Mappa e Area Personale ---
-    DOM.navMap.addEventListener('click', function() { switchView('map'); });
-    DOM.navDashboard.addEventListener('click', function() { switchView('dashboard'); });
+    /* Navigazione sezioni sidebar */
+    document.querySelectorAll('.sb-nav-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () { switchSidebarSection(this.dataset.section); });
+    });
 
-    // --- Azioni Prenotazione e Corsa ---
+    /* Filtro veicoli */
+    document.getElementById('btn-vehicle-filter').addEventListener('click', toggleFilterPanel);
+    document.querySelectorAll('.filter-chip').forEach(function (chip) {
+        chip.addEventListener('click', function () { selectVehicleFilter(this.dataset.type, this.textContent.trim()); });
+    });
+
+    /* Prenotazione / Corsa */
     document.getElementById('btn-cancel').addEventListener('click', handleCancelBooking);
     document.getElementById('btn-unlock').addEventListener('click', handleUnlockVehicle);
     document.getElementById('btn-end-ride').addEventListener('click', handleEndRide);
 
-    // --- Azioni Dashboard ---
+    /* Dashboard sidebar */
     document.getElementById('btn-recharge').addEventListener('click', handleRecharge);
     document.getElementById('btn-apply-promo').addEventListener('click', handlePromo);
     document.getElementById('btn-load-history').addEventListener('click', loadHistory);
     document.getElementById('btn-send-chat').addEventListener('click', handleChat);
     document.getElementById('btn-send-rating').addEventListener('click', handleRating);
     document.getElementById('btn-sos').addEventListener('click', handleSOS);
+    document.getElementById('btn-logout').addEventListener('click', handleLogout);
+
+    /* Stelle valutazione interattive */
+    initStarRating();
+
 });
 
-
-/* =================================================================
-   3. GESTIONE UI — Cambio vista, tabs, toast, profilo
-   ================================================================= */
-
-/**
- * Mostra un messaggio toast temporaneo (scompare dopo 4 secondi).
- * @param {string} msg - Il messaggio da mostrare.
- */
-function showToast(msg) {
-    DOM.toast.textContent = msg;
-    DOM.toast.classList.remove('hidden');
-    setTimeout(function() { DOM.toast.classList.add('hidden'); }, 4000);
+/* ── 4. AUTH ────────────────────────────────────────────────────── */
+function switchAuthTab(tab) {
+    document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+    document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+    document.getElementById('form-login').style.display    = tab === 'login'    ? 'flex' : 'none';
+    document.getElementById('form-register').style.display = tab === 'register' ? 'flex' : 'none';
+    document.getElementById('auth-feedback').textContent = '';
 }
 
-/**
- * Mostra un errore nella schermata di autenticazione.
- * @param {string} msg - Il messaggio di errore.
- */
 function showAuthError(msg) {
-    DOM.authFeedback.textContent = msg;
-    DOM.authFeedback.style.color = 'var(--color-danger)';
+    document.getElementById('auth-feedback').textContent = msg;
 }
 
-/**
- * Cambia tra il tab Login e il tab Registrazione.
- * @param {string} tab - 'login' oppure 'register'.
- */
-function switchTab(tab) {
-    var tabs = document.querySelectorAll('.tab');
-    for (var i = 0; i < tabs.length; i++) { tabs[i].classList.remove('active'); }
-
-    if (tab === 'login') {
-        document.getElementById('tab-login').classList.add('active');
-        DOM.formLogin.style.display = 'flex';
-        DOM.formRegister.style.display = 'none';
-    } else {
-        document.getElementById('tab-register').classList.add('active');
-        DOM.formLogin.style.display = 'none';
-        DOM.formRegister.style.display = 'flex';
-    }
-    DOM.authFeedback.textContent = '';
-}
-
-/**
- * Cambia la vista attiva tra Mappa e Area Personale.
- * @param {string} view - 'map' oppure 'dashboard'.
- */
-function switchView(view) {
-    if (view === 'map') {
-        DOM.viewMap.style.display = 'block';
-        DOM.viewDashboard.style.display = 'none';
-        DOM.navMap.classList.add('active');
-        DOM.navDashboard.classList.remove('active');
-        // Leaflet ha bisogno di ricalcolare le dimensioni dopo display:none
-        if (state.map) {
-            setTimeout(function() { state.map.invalidateSize(); }, 100);
-        }
-    } else {
-        DOM.viewMap.style.display = 'none';
-        DOM.viewDashboard.style.display = 'block';
-        DOM.navDashboard.classList.add('active');
-        DOM.navMap.classList.remove('active');
-        loadHistory(); // Aggiorna lo storico ogni volta che si entra
-    }
-}
-
-/**
- * Aggiorna il nome e il saldo visualizzati nella barra profilo.
- */
-function updateProfileUI() {
-    if (!state.user) return;
-    DOM.displayNome.textContent = state.user.nome;
-    DOM.displaySaldo.textContent = '€ ' + state.user.saldo.toFixed(2);
-}
-
-/**
- * Nasconde la schermata auth, mostra l'app e inizializza la mappa.
- */
-function showAppScreen() {
-    DOM.authScreen.style.display = 'none';
-    DOM.appScreen.style.display = 'block';
-    initMap();
-    loadVehicles();
-    updateProfileUI();
-    syncPanelsWithState();
-    switchView('map');
-}
-
-/**
- * Sincronizza la visibilità dei pannelli flottanti (prenotazione/corsa)
- * con lo stato corrente dell'utente.
- */
-function syncPanelsWithState() {
-    // Nascondi entrambi
-    DOM.bookingPanel.classList.add('hidden');
-    DOM.ridePanel.classList.add('hidden');
-
-    if (state.user.stato === 'prenotato') {
-        document.getElementById('booking-info').textContent =
-            'Prenotazione: ' + state.user.prenotazioneAttuale;
-        DOM.bookingPanel.classList.remove('hidden');
-        startBookingTimer(10 * 60); // 10 minuti
-    } else if (state.user.stato === 'in_corsa') {
-        document.getElementById('ride-info').textContent =
-            'Corsa: ' + state.user.corsaAttuale;
-        DOM.ridePanel.classList.remove('hidden');
-        startRideTimer();
-    }
-}
-
-
-/* =================================================================
-   4. AUTENTICAZIONE — Login, Registrazione, Logout (IF-UT.01)
-   ================================================================= */
-
-/** Gestisce il Login dell'utente */
 async function handleLogin() {
-    var nome = document.getElementById('login-nome').value.trim();
-    if (!nome) return showAuthError('Inserisci il nome utente');
-
+    var email    = document.getElementById('login-email').value.trim();
+    var password = document.getElementById('login-password').value;
+    if (!email || !password) return showAuthError('Email e password sono obbligatori');
     try {
-        var res = await fetch(API_BASE + '/user/login', {
+        var res  = await fetch(API_BASE + '/utenti/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nome: nome })
+            body: JSON.stringify({ email: email, password: password })
         });
         var data = await res.json();
-        if (res.ok) {
-            state.user = data.user;
-            showAppScreen();
-        } else {
-            showAuthError(data.error || 'Errore di login');
-        }
-    } catch (e) {
-        showAuthError('Errore di rete: il backend è attivo?');
-    }
+        if (res.ok) { state.user = data.user; state.token = data.token; showApp(); }
+        else showAuthError(data.error || 'Errore di login');
+    } catch (e) { showAuthError('Errore di rete: il backend è attivo?'); }
 }
 
-/** Gestisce la Registrazione di un nuovo utente */
 async function handleRegister() {
-    var nome = document.getElementById('register-nome').value.trim();
-    if (!nome) return showAuthError('Inserisci un nome utente');
+    var nome     = document.getElementById('register-nome').value.trim();
+    var cognome  = document.getElementById('register-cognome').value.trim();
+    var email    = document.getElementById('register-email').value.trim();
+    var password = document.getElementById('register-password').value;
+    var docFile  = document.getElementById('register-doc').files[0];
+
+    if (!nome)     return showAuthError('Inserisci un nome');
+    if (!email)    return showAuthError('Inserisci una email');
+    if (!password || password.length < 6) return showAuthError('La password deve essere di almeno 6 caratteri');
+
+    var formData = new FormData();
+    formData.append('nome', nome);
+    if (cognome)  formData.append('cognome', cognome);
+    formData.append('email', email);
+    formData.append('password', password);
+    if (docFile) formData.append('documento', docFile);
 
     try {
-        var res = await fetch(API_BASE + '/user/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nome: nome })
-        });
+        var res  = await fetch(API_BASE + '/utenti/registrazione', { method: 'POST', body: formData });
         var data = await res.json();
-        if (res.ok) {
-            state.user = data.user;
-            showAppScreen();
-        } else {
-            showAuthError('Errore durante la registrazione');
-        }
-    } catch (e) {
-        showAuthError('Errore di rete: il backend è attivo?');
-    }
+        if (res.ok) { state.user = data.user; state.token = data.token; showApp(); }
+        else showAuthError(data.error || 'Errore durante la registrazione');
+    } catch (e) { showAuthError('Errore di rete: il backend è attivo?'); }
 }
 
-/** Esegue il Logout e torna alla schermata di autenticazione */
 function handleLogout() {
-    state.user = null;
+    state.user  = null;
+    state.token = null;
     clearInterval(state.bookingTimerInterval);
     clearInterval(state.rideTimerInterval);
-    DOM.appScreen.style.display = 'none';
-    DOM.authScreen.style.display = 'flex';
+    closeSidebar();
+    document.getElementById('app-screen').style.display  = 'none';
+    document.getElementById('auth-screen').style.display = 'flex';
 }
 
+/* ── 5. SHOW APP ────────────────────────────────────────────────── */
+function showApp() {
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display  = 'block';
+    initMap();
+    initMapStylePicker();
+    loadVehicles();
+    updateTopBar();
+    updateSidebar();
+    syncBottomPanels();
+    loadHistory();
+}
 
-/* =================================================================
-   5. MAPPA E VEICOLI — Leaflet (IF-UT.03 - IF-UT.05)
-   ================================================================= */
-
-/** Inizializza la mappa Leaflet centrata su Bari */
+/* ── 6. MAPPA + STILI ───────────────────────────────────────────── */
 function initMap() {
-    if (state.map) return; // Già inizializzata
-    state.map = L.map('map', { zoomControl: false }).setView([41.1171, 16.8719], 15);
+    if (state.map) return;
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-    }).addTo(state.map);
+    state.map = L.map('map', {
+        zoomControl:        false,
+        attributionControl: true
+    }).setView([41.1171, 16.8719], 16);
+
+    setMapStyle('satellite');
 
     L.control.zoom({ position: 'bottomright' }).addTo(state.map);
+    state.map.on('zoomend', drawMarkers);
 }
 
-/** Carica i veicoli disponibili dal backend e li disegna sulla mappa */
+function setMapStyle(style) {
+    state.tileLayers.forEach(function (l) { state.map.removeLayer(l); });
+    state.tileLayers = [];
+
+    MAP_TILES[style].forEach(function (def) {
+        state.tileLayers.push(L.tileLayer(def.url, def.opts).addTo(state.map));
+    });
+
+    state.mapStyle = style;
+
+    document.querySelectorAll('.msp-option').forEach(function (btn) {
+        btn.classList.toggle('active', btn.dataset.style === style);
+    });
+    var lbl = document.getElementById('msp-label');
+    if (lbl) lbl.textContent = MAP_STYLE_LABELS[style];
+}
+
+function initMapStylePicker() {
+    if (state.mapPickerInit) return;
+    state.mapPickerInit = true;
+
+    var picker  = document.getElementById('map-style-picker');
+    var panel   = document.getElementById('msp-panel');
+    var toggle  = document.getElementById('btn-map-style');
+
+    picker.classList.remove('hidden');
+
+    toggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        panel.classList.toggle('hidden');
+    });
+
+    document.querySelectorAll('.msp-option').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            setMapStyle(this.dataset.style);
+            panel.classList.add('hidden');
+        });
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!picker.contains(e.target)) panel.classList.add('hidden');
+    });
+}
+
+/* ── 7. MARKER ZOOM-DIPENDENTI ──────────────────────────────────── */
+function getVehicleColor(tipo) {
+    if (tipo.includes('Monopattino'))         return '#00C566';
+    if (tipo.includes('Bicicletta Elettrica')) return '#0A84FF';
+    if (tipo.includes('Bicicletta'))          return '#34C759';
+    if (tipo.includes('Scooter'))             return '#FF9F0A';
+    return '#00C566';
+}
+function getVehicleEmoji(tipo) {
+    if (tipo.includes('Monopattino')) return '🛴';
+    if (tipo.includes('Bicicletta'))  return '🚲';
+    if (tipo.includes('Scooter'))     return '🛵';
+    return '🛴';
+}
+
+function buildMarkerIcon(vehicle) {
+    var zoom  = state.map ? state.map.getZoom() : 15;
+    var color = getVehicleColor(vehicle.tipo);
+
+    if (zoom < 15) {
+        var sz = zoom < 13 ? 9 : 12;
+        return L.divIcon({
+            className: '',
+            html: '<div class="v-dot pulse" style="width:' + sz + 'px;height:' + sz + 'px;background:' + color + '"></div>',
+            iconSize:   [sz, sz],
+            iconAnchor: [sz / 2, sz / 2]
+        });
+    } else {
+        var emoji = getVehicleEmoji(vehicle.tipo);
+        var size  = zoom >= 17 ? 46 : 40;
+        return L.divIcon({
+            className: '',
+            html: '<div class="v-icon" style="width:' + size + 'px;height:' + size + 'px;background:' + color + '">' + emoji + '</div>',
+            iconSize:   [size, size],
+            iconAnchor: [size / 2, size / 2]
+        });
+    }
+}
+
+function batteryColor(pct) {
+    if (pct >= 60) return '#34C759';
+    if (pct >= 30) return '#FF9F0A';
+    return '#FF3B30';
+}
+
 async function loadVehicles() {
     try {
-        var res = await fetch(API_BASE + '/fleet/vehicles');
+        var res  = await fetch(API_BASE + '/mezzi', { headers: authHeaders() });
         var data = await res.json();
+        if (res.status === 401) { handleLogout(); return; }
         state.vehicles = data.mezzi;
         drawMarkers();
-    } catch (e) {
-        console.error('Errore caricamento mezzi:', e);
-    }
+    } catch (e) { console.error('Errore caricamento veicoli:', e); }
 }
 
-/** Disegna i marker dei veicoli disponibili sulla mappa */
 function drawMarkers() {
-    // Rimuovi i vecchi marker
-    for (var i = 0; i < state.markers.length; i++) {
-        state.map.removeLayer(state.markers[i]);
-    }
+    state.markers.forEach(function (m) { state.map.removeLayer(m); });
     state.markers = [];
 
-    state.vehicles.forEach(function(v) {
-        if (v.stato !== 'disponibile') return; // Mostra solo quelli liberi
+    state.vehicles.forEach(function (v) {
+        if (v.stato !== 'disponibile') return;
 
-        // Colore del marker in base al tipo di veicolo
-        var iconColor = v.tipo.indexOf('Bici') !== -1 ? '#10B981' : '#4F46E5';
-        var icon = L.divIcon({
-            className: 'custom-marker',
-            html: '<div style="background:' + iconColor + '; width:22px; height:22px; border-radius:50%; border:3px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
-            iconSize: [22, 22],
-            iconAnchor: [11, 11]
-        });
+        if (state.vehicleFilter !== 'all' && !v.tipo.includes(state.vehicleFilter)) return;
 
-        var marker = L.marker([v.lat, v.lng], { icon: icon }).addTo(state.map);
+        var marker = L.marker([v.lat, v.lng], { icon: buildMarkerIcon(v) }).addTo(state.map);
 
-        // Popup con dettagli veicolo e bottone "Prenota"
-        var popupHtml =
-            '<div style="text-align:center;">' +
-                '<h4>' + v.tipo + '</h4>' +
-                '<p>🔋 Batteria: ' + v.batteria + '%<br>💰 Tariffa: €' + v.tariffa.toFixed(2) + '/min</p>' +
-                '<button class="popup-book-btn" onclick="bookVehicle(\'' + v.id + '\')">Prenota Ora</button>' +
-            '</div>';
-        marker.bindPopup(popupHtml);
+        var battPct = v.batteria + '%';
+        var battClr = batteryColor(v.batteria);
+        marker.bindPopup(
+            '<h4>' + v.tipo + '</h4>' +
+            '<p class="popup-meta">🔋 ' + v.batteria + '% &nbsp;·&nbsp; 💶 €' + parseFloat(v.tariffa).toFixed(2) + '/min</p>' +
+            '<div class="batt-bg"><div class="batt-fill" style="width:' + battPct + ';background:' + battClr + '"></div></div>' +
+            '<button class="popup-book-btn" onclick="bookVehicle(\'' + v.id + '\')">Prenota ora</button>',
+            { maxWidth: 200, className: '' }
+        );
+
         state.markers.push(marker);
     });
 }
 
+/* ── 8. SIDEBAR ─────────────────────────────────────────────────── */
+function openSidebar() {
+    state.sidebarOpen = true;
+    document.getElementById('left-sidebar').classList.add('open');
+    document.getElementById('sidebar-backdrop').classList.add('visible');
+    updateSidebar();
+    loadHistory();
+}
 
-/* =================================================================
-   6. PRENOTAZIONE — Prenota, annulla, scadenza (IF-UT.07 - IF-UT.09)
-   ================================================================= */
+function closeSidebar() {
+    state.sidebarOpen = false;
+    document.getElementById('left-sidebar').classList.remove('open');
+    document.getElementById('sidebar-backdrop').classList.remove('visible');
+}
 
-/**
- * Prenota un veicolo (chiamata dal popup Leaflet).
- * @param {string} vehicleId - L'ID del veicolo da prenotare.
- */
-window.bookVehicle = async function(vehicleId) {
-    if (state.user.stato !== 'libero') {
+function switchSidebarSection(section) {
+    document.querySelectorAll('.sb-nav-btn').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.section === section);
+    });
+    document.querySelectorAll('.sb-section').forEach(function (s) {
+        s.classList.toggle('active', s.id === 'section-' + section);
+    });
+    if (section === 'storico') loadHistory();
+}
+
+function updateTopBar() {
+    if (!state.user) return;
+    document.getElementById('top-avatar').textContent = state.user.nome.charAt(0).toUpperCase();
+}
+
+function updateSidebar() {
+    if (!state.user) return;
+    document.getElementById('sb-avatar').textContent   = state.user.nome.charAt(0).toUpperCase();
+    document.getElementById('sb-greeting').textContent = 'Ciao, ' + state.user.nome + '!';
+    document.getElementById('sb-saldo').textContent    = '€ ' + parseFloat(state.user.saldo).toFixed(2);
+    updateStats();
+}
+
+function updateStats() {
+    if (!state.user) return;
+    var corse    = state.user.storicoCorse || [];
+    var totMin   = corse.reduce(function (s, c) { return s + (parseInt(c.minuti) || 0); }, 0);
+    var kmStimati = Math.round(totMin / 60 * 15 * 10) / 10;
+    document.getElementById('stat-corse').textContent = corse.length;
+    document.getElementById('stat-km').textContent    = kmStimati % 1 === 0 ? kmStimati : kmStimati.toFixed(1);
+}
+
+/* ── 9. FILTRO VEICOLI ──────────────────────────────────────────── */
+function toggleFilterPanel() {
+    state.filterPanelOpen = !state.filterPanelOpen;
+    document.getElementById('vehicle-filter-panel').classList.toggle('open', state.filterPanelOpen);
+    document.getElementById('filter-chevron').classList.toggle('open', state.filterPanelOpen);
+}
+
+function selectVehicleFilter(type, label) {
+    state.vehicleFilter = type;
+    document.querySelectorAll('.filter-chip').forEach(function (c) {
+        c.classList.toggle('active', c.dataset.type === type);
+    });
+    var shortLabel = label.replace(/^[^\s]+\s/, '');
+    document.getElementById('filter-label-text').textContent = shortLabel;
+    drawMarkers();
+    toggleFilterPanel();
+}
+
+/* ── 10. PRENOTAZIONE ───────────────────────────────────────────── */
+window.bookVehicle = async function (vehicleId) {
+    if (!state.user || state.user.stato !== 'libero') {
         return showToast('Hai già una prenotazione o corsa attiva');
     }
-
     try {
-        var res = await fetch(API_BASE + '/booking/book', {
+        var res  = await fetch(API_BASE + '/prenotazioni', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ userId: state.user.id, vehicleId: vehicleId })
         });
         var data = await res.json();
         if (res.ok) {
-            state.user.stato = 'prenotato';
+            state.user.stato               = 'prenotato';
             state.user.prenotazioneAttuale = data.idPrenotazione;
             state.map.closePopup();
-            loadVehicles(); // Rimuove il mezzo dalla mappa
-            syncPanelsWithState();
-            showToast('Mezzo prenotato con successo!');
+            loadVehicles();
+            syncBottomPanels();
+            showToast('Mezzo prenotato!' + (state.user.email ? ' Controlla la tua email.' : ''));
         } else {
             showToast(data.error);
         }
-    } catch (e) {
-        showToast('Errore di rete');
-    }
+    } catch (e) { showToast('Errore di rete'); }
 };
 
-/** Annulla la prenotazione attiva (IF-UT.08) */
 async function handleCancelBooking() {
     try {
-        var res = await fetch(API_BASE + '/booking/cancel', {
+        var res = await fetch(API_BASE + '/prenotazioni/annulla', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ userId: state.user.id })
         });
         if (res.ok) {
-            state.user.stato = 'libero';
+            state.user.stato               = 'libero';
             state.user.prenotazioneAttuale = null;
             clearInterval(state.bookingTimerInterval);
-            syncPanelsWithState();
-            loadVehicles(); // Rimette il mezzo sulla mappa
+            syncBottomPanels();
+            loadVehicles();
             showToast('Prenotazione annullata');
         }
-    } catch (e) {
-        showToast('Errore di rete');
-    }
+    } catch (e) { showToast('Errore di rete'); }
 }
 
-
-/* =================================================================
-   7. CORSA — Sblocco, termine e pagamento (IF-UT.18, IF-UT.11)
-   ================================================================= */
-
-/** Sblocca il mezzo prenotato e avvia la corsa (IF-UT.18) */
+/* ── 11. CORSA ──────────────────────────────────────────────────── */
 async function handleUnlockVehicle() {
     try {
-        var res = await fetch(API_BASE + '/ride/unlock', {
+        var res  = await fetch(API_BASE + '/corse/sblocco', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ userId: state.user.id })
         });
         var data = await res.json();
         if (res.ok) {
             clearInterval(state.bookingTimerInterval);
-            state.user.stato = 'in_corsa';
+            state.user.stato               = 'in_corsa';
             state.user.prenotazioneAttuale = null;
-            state.user.corsaAttuale = data.idCorsa;
-            syncPanelsWithState();
-            showToast('Mezzo sbloccato! Corsa iniziata.');
-        } else {
-            showToast(data.error);
-        }
-    } catch (e) {
-        showToast('Errore di rete');
-    }
+            state.user.corsaAttuale        = data.idCorsa;
+            syncBottomPanels();
+            showToast('Mezzo sbloccato! Buona corsa 🛴');
+        } else { showToast(data.error); }
+    } catch (e) { showToast('Errore di rete'); }
 }
 
-/** Termina la corsa e scala il costo dal saldo (IF-UT.11) */
 async function handleEndRide() {
     try {
-        var res = await fetch(API_BASE + '/ride/end', {
+        var res  = await fetch(API_BASE + '/corse/termine', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ userId: state.user.id })
         });
         var data = await res.json();
         if (res.ok) {
             clearInterval(state.rideTimerInterval);
-            state.user.stato = 'libero';
+            state.user.stato        = 'libero';
             state.user.corsaAttuale = null;
-            state.user.saldo = parseFloat(data.nuovoSaldo);
+            state.user.saldo        = parseFloat(data.nuovoSaldo);
 
-            updateProfileUI();
-            syncPanelsWithState();
-            loadVehicles(); // Il veicolo torna disponibile
+            updateSidebar();
+            syncBottomPanels();
+            loadVehicles();
 
-            alert(
-                'Corsa Terminata!\n' +
-                'Durata: ' + data.minuti + ' min\n' +
-                'Costo: €' + data.costoFinale + '\n' +
-                'Nuovo Saldo: €' + data.nuovoSaldo
-            );
-        } else {
-            showToast(data.error);
-        }
-    } catch (e) {
-        showToast('Errore di rete');
+            showToast('Corsa terminata — €' + data.costoFinale);
+            setTimeout(function () {
+                alert('Corsa Terminata!\nDurata: ' + data.minuti + ' min\nCosto: €' + data.costoFinale + '\nNuovo saldo: €' + data.nuovoSaldo);
+            }, 300);
+        } else { showToast(data.error); }
+    } catch (e) { showToast('Errore di rete'); }
+}
+
+/* ── 12. PANNELLI BOTTOM ────────────────────────────────────────── */
+function syncBottomPanels() {
+    var bp = document.getElementById('booking-panel');
+    var rp = document.getElementById('ride-panel');
+    bp.classList.add('hidden');
+    rp.classList.add('hidden');
+
+    if (!state.user) return;
+
+    if (state.user.stato === 'prenotato') {
+        document.getElementById('booking-info').textContent = state.user.prenotazioneAttuale || '';
+        bp.classList.remove('hidden');
+        startBookingTimer(10 * 60);
+    } else if (state.user.stato === 'in_corsa') {
+        document.getElementById('ride-info').textContent = 'Corsa: ' + (state.user.corsaAttuale || '');
+        rp.classList.remove('hidden');
+        startRideTimer();
     }
 }
 
-
-/* =================================================================
-   8. DASHBOARD — Ricarica, promo, storico, chat, SOS
-      (IF-UT.02, IF-UT.12, IF-UT.13, IF-UT.14, IF-UT.15, IF-UT.16)
-   ================================================================= */
-
-/** Ricarica il saldo dell'utente (IF-UT.02) */
+/* ── 13. DASHBOARD SIDEBAR ──────────────────────────────────────── */
 async function handleRecharge() {
-    var importo = document.getElementById('input-importo').value;
+    var importo = parseFloat(document.getElementById('input-importo').value);
     if (!importo || importo <= 0) return showToast('Inserisci un importo valido');
 
     try {
-        var res = await fetch(API_BASE + '/user/recharge', {
+        var res  = await fetch(API_BASE + '/utenti/ricarica', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: state.user.id, carta: '123', importo: importo })
+            headers: authHeaders(),
+            body: JSON.stringify({ idUtente: state.user.id, importo: importo })
         });
         var data = await res.json();
+
         if (res.ok) {
             state.user.saldo = data.nuovoSaldo;
-            updateProfileUI();
+            updateSidebar();
             document.getElementById('input-importo').value = '';
             showToast('Ricaricati €' + importo);
+        } else {
+            showToast(data.error || 'Errore ricarica');
         }
-    } catch (e) {
-        showToast('Errore di rete');
-    }
+    } catch (e) { showToast('Errore di rete'); }
 }
 
-/** Applica un codice promozionale (IF-UT.14) */
 async function handlePromo() {
     var codice = document.getElementById('input-promo').value.trim();
     if (!codice) return showToast('Inserisci un codice promo');
-
     try {
-        var res = await fetch(API_BASE + '/user/promo', {
+        var res  = await fetch(API_BASE + '/utenti/promozioni', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ userId: state.user.id, codice: codice })
         });
         var data = await res.json();
         showToast(data.messaggio);
         document.getElementById('input-promo').value = '';
-    } catch (e) {
-        showToast('Errore di rete');
-    }
+    } catch (e) { showToast('Errore di rete'); }
 }
 
-/** Carica lo storico delle corse completate (IF-UT.12) */
 async function loadHistory() {
+    if (!state.user || !state.token) return;
     try {
-        var res = await fetch(API_BASE + '/user/history/' + state.user.id);
+        var res  = await fetch(API_BASE + '/utenti/' + state.user.id + '/storico-corse', {
+            headers: authHeaders()
+        });
         var data = await res.json();
-        var historyList = document.getElementById('history-list');
 
+        var list = document.getElementById('history-list');
         if (res.ok && data.corse && data.corse.length > 0) {
-            historyList.innerHTML = '';
-            data.corse.forEach(function(c) {
+            list.innerHTML = '';
+            data.corse.slice().reverse().forEach(function (c) {
                 var li = document.createElement('li');
-                li.innerHTML = '<strong>' + c.data + '</strong> <span>€' + c.costo + ' (' + c.minuti + ' min)</span>';
-                historyList.appendChild(li);
+                li.className = 'sb-history-item';
+                li.innerHTML =
+                    '<div class="sb-history-meta">' +
+                        '<span class="sb-history-date">' + c.data + '</span>' +
+                        '<span class="sb-history-details">' + (c.tipoVeicolo || '') + ' · ' + c.minuti + ' min</span>' +
+                    '</div>' +
+                    '<span class="sb-history-cost">€' + c.costo + '</span>';
+                list.appendChild(li);
             });
+            state.user.storicoCorse = data.corse;
+            updateStats();
         } else {
-            historyList.innerHTML = '<li class="history-empty">Nessuna corsa effettuata.</li>';
+            list.innerHTML = '<li class="sb-history-empty">Nessuna corsa effettuata.</li>';
         }
-    } catch (e) {
-        showToast('Errore caricamento storico');
-    }
+    } catch (e) { console.error('Errore storico:', e); }
 }
 
-/** Invia un messaggio all'assistenza clienti (IF-UT.15) */
 async function handleChat() {
-    var messaggio = document.getElementById('input-chat').value.trim();
-    if (!messaggio) return;
-
+    var msg = document.getElementById('input-chat').value.trim();
+    if (!msg) return;
     try {
-        var res = await fetch(API_BASE + '/support/chat', {
+        var res  = await fetch(API_BASE + '/supporto/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messaggio: messaggio })
+            headers: authHeaders(),
+            body: JSON.stringify({ messaggio: msg })
         });
         var data = await res.json();
         showToast(data.messaggio);
         document.getElementById('input-chat').value = '';
-    } catch (e) {
-        showToast('Errore di rete');
-    }
+    } catch (e) { showToast('Errore di rete'); }
 }
 
-/** Invia una valutazione in stelle (IF-UT.13) */
-async function handleRating() {
-    var stelle = document.getElementById('input-rating').value;
-    if (!stelle || stelle < 1 || stelle > 5) return showToast('Voto non valido (1-5)');
+function initStarRating() {
+    var stars = document.querySelectorAll('.star-btn');
+    stars.forEach(function (btn) {
+        btn.addEventListener('mouseenter', function () {
+            var val = parseInt(this.dataset.star);
+            stars.forEach(function (b) {
+                var bv = parseInt(b.dataset.star);
+                b.classList.toggle('hovered', bv <= val);
+                b.classList.remove('active');
+            });
+        });
+        btn.addEventListener('mouseleave', function () {
+            stars.forEach(function (b) {
+                b.classList.remove('hovered');
+                b.classList.toggle('active', parseInt(b.dataset.star) <= state.selectedRating);
+            });
+        });
+        btn.addEventListener('click', function () {
+            state.selectedRating = parseInt(this.dataset.star);
+            stars.forEach(function (b) {
+                b.classList.toggle('active', parseInt(b.dataset.star) <= state.selectedRating);
+            });
+        });
+    });
+}
 
+async function handleRating() {
+    if (!state.selectedRating) return showToast('Seleziona un voto (1-5 stelle)');
     try {
-        var res = await fetch(API_BASE + '/support/review', {
+        var res  = await fetch(API_BASE + '/supporto/recensione', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stelle: stelle })
+            headers: authHeaders(),
+            body: JSON.stringify({ stelle: state.selectedRating })
         });
         var data = await res.json();
         showToast(data.messaggio);
-        document.getElementById('input-rating').value = '';
-    } catch (e) {
-        showToast('Errore di rete');
-    }
+        state.selectedRating = 0;
+        document.querySelectorAll('.star-btn').forEach(function (b) { b.classList.remove('active'); });
+    } catch (e) { showToast('Errore di rete'); }
 }
 
-/** Avvia una chiamata di emergenza SOS (IF-UT.16) */
 async function handleSOS() {
     if (!confirm('Vuoi davvero inviare una chiamata di emergenza?')) return;
-
     try {
-        var res = await fetch(API_BASE + '/support/call-sos', {
+        var res  = await fetch(API_BASE + '/supporto/sos', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: authHeaders()
         });
         var data = await res.json();
         alert(data.messaggio);
-    } catch (e) {
-        alert('Errore rete in SOS!');
-    }
+    } catch (e) { alert('Errore rete in SOS!'); }
 }
 
-
-/* =================================================================
-   9. TIMER — Countdown prenotazione e cronometro corsa
-   ================================================================= */
-
-/**
- * Avvia un countdown per la scadenza della prenotazione (IF-UT.09).
- * @param {number} secondsLeft - Secondi rimanenti.
- */
+/* ── 14. TIMER ──────────────────────────────────────────────────── */
 function startBookingTimer(secondsLeft) {
     clearInterval(state.bookingTimerInterval);
-    var elTimer = document.getElementById('booking-timer');
+    var el = document.getElementById('booking-timer');
 
-    state.bookingTimerInterval = setInterval(function() {
+    state.bookingTimerInterval = setInterval(function () {
         secondsLeft--;
         if (secondsLeft <= 0) {
-            handleCancelBooking(); // Scadenza automatica
+            handleCancelBooking();
             showToast('Prenotazione scaduta');
             return;
         }
         var m = Math.floor(secondsLeft / 60).toString().padStart(2, '0');
         var s = (secondsLeft % 60).toString().padStart(2, '0');
-        elTimer.textContent = 'Scadenza: ' + m + ':' + s;
+        el.textContent = m + ':' + s;
     }, 1000);
 }
 
-/**
- * Avvia un cronometro per la durata della corsa attiva.
- */
 function startRideTimer() {
     clearInterval(state.rideTimerInterval);
-    var elTimer = document.getElementById('ride-timer');
-    var secondsElapsed = 0;
+    var el = document.getElementById('ride-timer');
+    var sec = 0;
 
-    state.rideTimerInterval = setInterval(function() {
-        secondsElapsed++;
-        var m = Math.floor(secondsElapsed / 60).toString().padStart(2, '0');
-        var s = (secondsElapsed % 60).toString().padStart(2, '0');
-        elTimer.textContent = 'Durata: ' + m + ':' + s;
+    state.rideTimerInterval = setInterval(function () {
+        sec++;
+        var m = Math.floor(sec / 60).toString().padStart(2, '0');
+        var s = (sec % 60).toString().padStart(2, '0');
+        el.textContent = m + ':' + s;
     }, 1000);
+}
+
+/* ── 15. TOAST ──────────────────────────────────────────────────── */
+function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    clearTimeout(showToast._tid);
+    showToast._tid = setTimeout(function () { t.classList.add('hidden'); }, 3500);
 }

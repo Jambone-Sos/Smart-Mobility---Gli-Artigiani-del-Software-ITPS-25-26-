@@ -1,49 +1,65 @@
 /* =================================================================
    API GATEWAY — server.js
    -----------------------------------------------------------------
-   Punto di ingresso dell'applicazione backend.
-   Ruolo: Riceve tutte le richieste HTTP dal frontend e le smista
-   verso i moduli di servizio nella cartella /services/.
+   Punto di ingresso: smista le richieste REST verso i servizi
+   (User, Fleet, Booking, Ride, Support) come nel diagramma componenti.
 
-   Architettura:
-     Client (frontend) --HTTP--> API Gateway (questo file)
-                                    |
-                                    |--> /api/user     -> userManagement.js
-                                    |--> /api/booking  -> bookingService.js
-                                    |--> /api/ride     -> rideService.js
-                                    |--> /api/fleet    -> fleetService.js
-                                    |--> /api/support  -> supportService.js
+   Prefissi REST (coerenti con i servizi della documentazione):
+     /api/utenti       → userManagement.js   (User Service)
+     /api/mezzi        → fleetService.js      (Fleet Service)
+     /api/prenotazioni → bookingService.js    (Booking Service)
+     /api/corse        → rideService.js       (Ride Service)
+     /api/supporto     → supportService.js
+
+   Autenticazione: JWT Bearer Token (IFC-01), scadenza 24h.
+   Rotte pubbliche (no JWT): POST /registrazione, POST /login.
    ================================================================= */
 
 var express = require('express');
 var cors = require('cors');
+var path = require('path');
 var db = require('./database');
+var { verifyToken } = require('./auth');
 
 var app = express();
-var PORT = 3000;
+var PORT = process.env.PORT || 3000;
 
-// Middleware globali
-app.use(cors());              // Permette chiamate cross-origin dal frontend
-app.use(express.json());      // Parsing automatico del body JSON
+app.use(cors());
+app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Connessione al Database (simulato)
-db.connectDB();
-
-// Importazione dei Servizi (Router Express)
 var userManagement = require('./services/userManagement');
+var fleetService   = require('./services/fleetService');
 var bookingService = require('./services/bookingService');
-var rideService = require('./services/rideService');
-var fleetService = require('./services/fleetService');
+var rideService    = require('./services/rideService');
 var supportService = require('./services/supportService');
 
-// Registrazione delle Rotte — ogni servizio gestisce un prefisso
-app.use('/api/user', userManagement);   // IF-UT.01, 02, 12, 14
-app.use('/api/booking', bookingService);   // IF-UT.07, 08, 09
-app.use('/api/ride', rideService);      // IF-UT.18, 11
-app.use('/api/fleet', fleetService);     // IF-UT.03, 04, 05
-app.use('/api/support', supportService);   // IF-UT.13, 15, 16
+/* Middleware JWT globale — salta solo registrazione e login (IFC-01) */
+var PUBLIC_PATHS = [
+    { method: 'POST', path: '/api/utenti/registrazione' },
+    { method: 'POST', path: '/api/utenti/login' }
+];
 
-// Avvio del server
-app.listen(PORT, function () {
-    console.log('🚀 API Gateway in ascolto sulla porta ' + PORT);
+app.use(function (req, res, next) {
+    var isPublic = PUBLIC_PATHS.some(function (p) {
+        return p.method === req.method && p.path === req.path;
+    });
+    if (isPublic) return next();
+    verifyToken(req, res, next);
+});
+
+app.use('/api/utenti', userManagement);
+app.use('/api/mezzi', fleetService);
+app.use('/api/prenotazioni', bookingService);
+app.use('/api/corse', rideService);
+app.use('/api/supporto', supportService);
+
+db.connectDB().then(function () {
+    app.listen(PORT, function () {
+        console.log('🚀 API Gateway in ascolto sulla porta ' + PORT);
+        console.log('   Frontend → apri frontend/index.html nel browser');
+    });
+}).catch(function (err) {
+    console.error('❌ Errore avvio database:', err);
+    process.exit(1);
 });

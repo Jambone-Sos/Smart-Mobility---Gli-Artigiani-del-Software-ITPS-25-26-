@@ -1,158 +1,285 @@
-<!DOCTYPE html>
+npm<!DOCTYPE html>
 <html lang="it">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMART Mobility - Sprint 1</title>
-    <meta name="description" content="Pannello di Collaudo E2E per SMART Mobility System - Sprint 1">
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Leaflet (Libreria Mappa Open Source) -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SMART Mobility</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
-    <!-- ================================================================
-         SEZIONE 1: SCHERMATA DI AUTENTICAZIONE (IF-UT.01)
-         Visibile all'apertura dell'app. Scompare dopo il login/registrazione.
-         ================================================================ -->
-    <div id="auth-screen" class="overlay">
-        <div class="auth-card">
-            <h1>SMART Mobility</h1>
-            <p class="subtitle">Accedi o Registrati per esplorare la flotta</p>
+<!-- ╔══ SCHERMATA AUTH ════════════════════════════════════════════╗ -->
+<div id="auth-screen">
+    <div id="auth-bg"></div>
+    <div class="auth-wrap">
 
-            <!-- Tab di selezione Login / Registrazione -->
-            <div class="tabs" role="tablist">
-                <button id="tab-login" class="tab active" role="tab">Login</button>
-                <button id="tab-register" class="tab" role="tab">Registrati</button>
+        <div class="auth-logo">
+            <svg class="auth-logo-bolt" viewBox="0 0 28 36" fill="none">
+                <path d="M16 2L2 20H14L12 34L26 16H14L16 2Z"
+                      fill="#00C566" stroke="#00C566" stroke-width="0.5" stroke-linejoin="round"/>
+            </svg>
+            SMART Mobility
+        </div>
+
+        <div class="auth-card">
+            <div class="auth-tabs">
+                <button id="tab-login"    class="auth-tab active">Accedi</button>
+                <button id="tab-register" class="auth-tab">Registrati</button>
             </div>
 
-            <!-- Form Login -->
-            <form id="form-login" class="form-vertical">
-                <input type="text" id="login-nome" placeholder="Nome Utente" required>
-                <button type="submit" class="btn btn-primary">Accedi</button>
+            <!-- Login -->
+            <form id="form-login" class="auth-form">
+                <input type="email"    id="login-email"    class="auth-input"
+                       placeholder="Email" autocomplete="email">
+                <input type="password" id="login-password" class="auth-input"
+                       placeholder="Password" autocomplete="current-password">
+                <button type="submit" class="btn-auth">Accedi →</button>
             </form>
 
-            <!-- Form Registrazione -->
-            <form id="form-register" class="form-vertical" style="display: none;">
-                <input type="text" id="register-nome" placeholder="Nome Utente" required>
-                <input type="text" id="register-doc" placeholder="Documento (es. id.pdf)">
-                <button type="submit" class="btn btn-primary">Registrati</button>
+            <!-- Registrazione -->
+            <form id="form-register" class="auth-form" style="display:none" enctype="multipart/form-data">
+                <input type="text"     id="register-nome"     class="auth-input" placeholder="Nome *" required>
+                <input type="text"     id="register-cognome"  class="auth-input" placeholder="Cognome">
+                <input type="email"    id="register-email"    class="auth-input" placeholder="Email *" required>
+                <input type="password" id="register-password" class="auth-input"
+                       placeholder="Password (min. 6 caratteri) *" required>
+                <label class="file-drop" for="register-doc">
+                    <span class="file-drop-icon">📄</span>
+                    <span id="file-label-text">Documento d'identità (facoltativo)</span>
+                    <span class="file-drop-hint">JPG, PNG o PDF · max 5 MB</span>
+                </label>
+                <input type="file" id="register-doc" accept=".jpg,.jpeg,.png,.pdf" style="display:none">
+                <button type="submit" class="btn-auth">Crea account →</button>
             </form>
 
-            <!-- Messaggi di errore auth -->
-            <p id="auth-feedback" class="feedback-msg"></p>
+            <p id="auth-feedback" class="auth-feedback"></p>
+        </div>
+    </div>
+</div>
+
+<!-- ╔══ SCHERMATA APP ═════════════════════════════════════════════╗ -->
+<div id="app-screen" style="display:none">
+
+    <!-- Mappa full-screen (Google Earth / satellite) -->
+    <div id="map"></div>
+
+    <!-- ── Top Bar ─────────────────────────────────────────────── -->
+    <div id="top-bar">
+        <!-- Sinistra: avatar profilo -->
+        <button id="btn-sidebar-toggle" class="top-icon-btn" aria-label="Apri menu">
+            <div class="top-avatar" id="top-avatar">M</div>
+        </button>
+
+        <!-- Centro: logo -->
+        <span id="top-logo">SMART</span>
+
+        <!-- Destra: filtro veicoli -->
+        <button id="btn-vehicle-filter" class="top-filter-btn" aria-label="Filtra veicoli">
+            <span id="filter-label-text">Tutti</span>
+            <svg id="filter-chevron" width="12" height="8" viewBox="0 0 12 8" fill="none">
+                <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.8"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- ── Filtro veicoli (scende dall'alto) ───────────────────── -->
+    <div id="vehicle-filter-panel">
+        <div class="filter-chips">
+            <button class="filter-chip active" data-type="all">🗺️ Tutti</button>
+            <button class="filter-chip" data-type="Monopattino">🛴 Monopattini</button>
+            <button class="filter-chip" data-type="Bicicletta">🚲 Biciclette</button>
+            <button class="filter-chip" data-type="Scooter">🛵 Scooter</button>
         </div>
     </div>
 
-    <!-- ================================================================
-         SEZIONE 2: INTERFACCIA PRINCIPALE (dopo login)
-         Contiene la barra profilo, le due viste e la navigazione.
-         ================================================================ -->
-    <div id="app-screen" class="app-screen" style="display: none;">
+    <!-- ── Backdrop sidebar ────────────────────────────────────── -->
+    <div id="sidebar-backdrop"></div>
 
-        <!-- 2A. Barra Profilo (sempre visibile in alto) -->
-        <header id="profile-bar" class="profile-bar glass-panel">
-            <div class="profile-left">
-                <span id="display-nome" class="profile-name">Utente</span>
-                <span id="display-saldo" class="profile-badge">€ 0.00</span>
+    <!-- ── Sidebar sinistra ────────────────────────────────────── -->
+    <aside id="left-sidebar">
+
+        <!-- Header utente -->
+        <div class="sb-header">
+            <div class="sb-avatar" id="sb-avatar">M</div>
+            <div class="sb-user-info">
+                <p class="sb-greeting" id="sb-greeting">Ciao, Utente!</p>
+                <p class="sb-saldo"    id="sb-saldo">€ 0.00</p>
             </div>
-            <button id="btn-logout" class="btn btn-outline btn-small">Esci</button>
-        </header>
-
-        <!-- 2B. VISTA MAPPA (IF-UT.03 - IF-UT.05) -->
-        <div id="view-map" class="view active-view">
-            <div id="map"></div>
+            <button class="sb-close-btn" id="btn-close-sidebar" aria-label="Chiudi">✕</button>
         </div>
 
-        <!-- 2C. VISTA AREA PERSONALE (Dashboard) -->
-        <div id="view-dashboard" class="view" style="display: none;">
-            <div class="dashboard-scroll">
-
-                <h2 class="dashboard-title">Area Personale</h2>
-
-                <!-- Card: Portafoglio (IF-UT.02) e Promozioni (IF-UT.14) -->
-                <section class="card">
-                    <h3>Portafoglio & Promozioni</h3>
-                    <div class="form-row">
-                        <input type="text" id="input-carta" placeholder="Numero Carta">
-                        <input type="number" id="input-importo" placeholder="Importo €" min="1">
-                        <button id="btn-recharge" class="btn btn-primary">Ricarica</button>
-                    </div>
-                    <hr>
-                    <div class="form-row">
-                        <input type="text" id="input-promo" placeholder="Codice Promo (es. SCONTO50)">
-                        <button id="btn-apply-promo" class="btn btn-secondary">Applica</button>
-                    </div>
-                </section>
-
-                <!-- Card: Storico Corse (IF-UT.12) -->
-                <section class="card">
-                    <h3>Storico Corse</h3>
-                    <button id="btn-load-history" class="btn btn-secondary btn-small">Aggiorna</button>
-                    <ul id="history-list" class="history-list">
-                        <li class="history-empty">Nessuna corsa effettuata.</li>
-                    </ul>
-                </section>
-
-                <!-- Card: Assistenza (IF-UT.13, IF-UT.15, IF-UT.16) -->
-                <section class="card">
-                    <h3>Assistenza e Valutazione</h3>
-                    <div class="form-row">
-                        <input type="text" id="input-chat" placeholder="Scrivi al supporto...">
-                        <button id="btn-send-chat" class="btn btn-secondary">Invia</button>
-                    </div>
-                    <div class="form-row">
-                        <input type="number" id="input-rating" placeholder="Voto 1-5" min="1" max="5">
-                        <button id="btn-send-rating" class="btn btn-secondary">Valuta</button>
-                    </div>
-                    <hr>
-                    <button id="btn-sos" class="btn btn-danger btn-full">EMERGENZA (SOS)</button>
-                </section>
+        <!-- Statistiche km / corse -->
+        <div class="sb-stats">
+            <div class="sb-stat-box">
+                <span class="sb-stat-num" id="stat-km">0</span>
+                <span class="sb-stat-lbl">km percorsi</span>
+            </div>
+            <div class="sb-stat-sep"></div>
+            <div class="sb-stat-box">
+                <span class="sb-stat-num" id="stat-corse">0</span>
+                <span class="sb-stat-lbl">corse</span>
             </div>
         </div>
 
-        <!-- 2D. PANNELLI FLOTTANTI (Prenotazione e Corsa)
-             Posizionati FUORI dalle viste, a livello di #app-screen,
-             per evitare problemi di z-index con la mappa. -->
-
-        <!-- Pannello Prenotazione Attiva (IF-UT.07 - IF-UT.09) -->
-        <div id="booking-panel" class="action-panel glass-panel hidden">
-            <h3>Mezzo Prenotato</h3>
-            <p id="booking-info"></p>
-            <div class="timer" id="booking-timer">Scadenza: 10:00</div>
-            <div class="action-buttons">
-                <button id="btn-cancel" class="btn btn-secondary">Annulla</button>
-                <button id="btn-unlock" class="btn btn-primary">Sblocca Mezzo</button>
-            </div>
-        </div>
-
-        <!-- Pannello Corsa in Corso (IF-UT.18, IF-UT.11) -->
-        <div id="ride-panel" class="action-panel glass-panel hidden">
-            <h3>Corsa in Corso</h3>
-            <p id="ride-info"></p>
-            <div class="timer" id="ride-timer">Durata: 00:00</div>
-            <div class="action-buttons">
-                <button id="btn-end-ride" class="btn btn-danger">Termina e Paga</button>
-            </div>
-        </div>
-
-        <!-- 2E. BARRA DI NAVIGAZIONE INFERIORE -->
-        <nav id="bottom-nav" class="bottom-nav glass-panel">
-            <button id="nav-map" class="nav-btn active">🗺️ Mappa</button>
-            <button id="nav-dashboard" class="nav-btn">👤 Profilo</button>
+        <!-- Navigazione sezioni -->
+        <nav class="sb-nav">
+            <button class="sb-nav-btn active" data-section="portafoglio">
+                <span class="sb-nav-icon">💳</span> Portafoglio
+            </button>
+            <button class="sb-nav-btn" data-section="storico">
+                <span class="sb-nav-icon">🕐</span> Storico Corse
+            </button>
+            <button class="sb-nav-btn" data-section="assistenza">
+                <span class="sb-nav-icon">💬</span> Assistenza
+            </button>
         </nav>
 
-        <!-- Toast per notifiche rapide -->
-        <div id="toast" class="toast hidden"></div>
+        <!-- ── Sezione: Portafoglio ─────────────────────────────── -->
+        <div class="sb-section active" id="section-portafoglio">
+            <div class="sb-scroll">
+                <p class="sb-label">Ricarica saldo</p>
+                <div class="sb-row">
+                    <input type="number" id="input-importo" class="sb-input" placeholder="Importo €" min="1">
+                    <button id="btn-recharge" class="btn-lime-sm">Ricarica</button>
+                </div>
+                <div id="stripe-card-section" style="display:none" class="stripe-block">
+                    <p class="stripe-label">🔒 Pagamento sicuro Stripe</p>
+                    <div id="stripe-card-element" class="stripe-el"></div>
+                    <div id="stripe-card-errors" class="stripe-err"></div>
+                </div>
+                <div id="payment-simulated-note" style="display:none" class="sim-note">
+                    ℹ️ Demo — nessuna carta richiesta
+                </div>
+
+                <div class="sb-divider"></div>
+                <p class="sb-label">Codice promo</p>
+                <div class="sb-row">
+                    <input type="text" id="input-promo" class="sb-input" placeholder="Es. SCONTO50">
+                    <button id="btn-apply-promo" class="btn-ghost-sm">Applica</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Sezione: Storico Corse ──────────────────────────── -->
+        <div class="sb-section" id="section-storico">
+            <div class="sb-scroll">
+                <div class="sb-section-header">
+                    <p class="sb-label">Ultime corse</p>
+                    <button id="btn-load-history" class="btn-ghost-sm">↻ Aggiorna</button>
+                </div>
+                <ul id="history-list" class="sb-history">
+                    <li class="sb-history-empty">Nessuna corsa effettuata.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- ── Sezione: Assistenza ────────────────────────────── -->
+        <div class="sb-section" id="section-assistenza">
+            <div class="sb-scroll">
+                <p class="sb-label">Chat supporto</p>
+                <div class="sb-row">
+                    <input type="text" id="input-chat" class="sb-input" placeholder="Scrivi al supporto...">
+                    <button id="btn-send-chat" class="btn-lime-sm">Invia</button>
+                </div>
+
+                <div class="sb-divider"></div>
+                <p class="sb-label">Valuta la corsa</p>
+                <div class="star-row">
+                    <div class="star-group" id="star-group">
+                        <button class="star-btn" data-star="1">★</button>
+                        <button class="star-btn" data-star="2">★</button>
+                        <button class="star-btn" data-star="3">★</button>
+                        <button class="star-btn" data-star="4">★</button>
+                        <button class="star-btn" data-star="5">★</button>
+                    </div>
+                    <button id="btn-send-rating" class="btn-ghost-sm">Invia</button>
+                </div>
+
+                <div class="sb-divider"></div>
+                <button id="btn-sos" class="btn-sos">🚨 EMERGENZA SOS</button>
+            </div>
+        </div>
+
+        <div class="sb-footer">
+            <button id="btn-logout" class="btn-logout-sb">Esci dall'account</button>
+        </div>
+    </aside>
+
+    <!-- ── Pannello Prenotazione (bottom sheet) ─────────────────── -->
+    <div id="booking-panel" class="bottom-panel hidden">
+        <div class="bp-handle"></div>
+        <div class="bp-body">
+            <div class="bp-top-row">
+                <div class="bp-info">
+                    <h3 class="bp-title">Mezzo prenotato</h3>
+                    <p class="bp-sub"  id="booking-info">ID prenotazione…</p>
+                </div>
+                <div class="bp-timer-block">
+                    <span class="bp-timer-num" id="booking-timer">10:00</span>
+                    <span class="bp-timer-lbl">rimasto</span>
+                </div>
+            </div>
+            <div class="bp-actions">
+                <button id="btn-cancel" class="bp-btn-secondary">Annulla</button>
+                <button id="btn-unlock" class="bp-btn-primary">🔓 Sblocca mezzo</button>
+            </div>
+        </div>
     </div>
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js"></script>
-</body>
+    <!-- ── Pannello Corsa (bottom sheet) ────────────────────────── -->
+    <div id="ride-panel" class="bottom-panel hidden">
+        <div class="bp-handle"></div>
+        <div class="bp-body">
+            <div class="bp-top-row">
+                <div class="bp-info">
+                    <h3 class="bp-title">Corsa in corso</h3>
+                    <p class="bp-sub"  id="ride-info">Stai viaggiando…</p>
+                </div>
+                <div class="bp-timer-block">
+                    <span class="bp-timer-num ride-orange" id="ride-timer">00:00</span>
+                    <span class="bp-timer-lbl">durata</span>
+                </div>
+            </div>
+            <div class="bp-actions">
+                <button id="btn-end-ride" class="bp-btn-danger">🏁 Termina e Paga</button>
+            </div>
+        </div>
+    </div>
 
+    <!-- ── Selettore stile mappa (bottom-right, stile Google Maps) ── -->
+    <div id="map-style-picker" class="hidden">
+        <div id="msp-panel" class="msp-panel hidden">
+            <button class="msp-option active" data-style="satellite">
+                <div class="msp-thumb msp-thumb--satellite"></div>
+                <span>Satellite</span>
+            </button>
+            <button class="msp-option" data-style="dark">
+                <div class="msp-thumb msp-thumb--dark"></div>
+                <span>Scuro</span>
+            </button>
+            <button class="msp-option" data-style="light">
+                <div class="msp-thumb msp-thumb--light"></div>
+                <span>Chiaro</span>
+            </button>
+        </div>
+        <button id="btn-map-style" class="msp-toggle" aria-label="Stili mappa">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M9 3L3 6v15l6-3 6 3 6-3V3l-6 3-6-3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                <path d="M9 3v15M15 6v15" stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+            <span id="msp-label">Satellite</span>
+        </button>
+    </div>
+
+    <!-- Toast notifiche -->
+    <div id="toast" class="toast hidden"></div>
+
+</div><!-- /app-screen -->
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
 </html>
