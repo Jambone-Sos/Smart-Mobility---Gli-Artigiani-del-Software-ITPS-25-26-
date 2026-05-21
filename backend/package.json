@@ -1,0 +1,17 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Backend API SMART Mobility Sprint 1 — SQLite locale, REST, JWT",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.13.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^2.1.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
