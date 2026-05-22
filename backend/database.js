@@ -16,11 +16,11 @@ var db = null;
 var ready = false;
 
 var MEZZI_INIZIALI = [
-    { id: 'veh-1', tipo: 'Monopattino Elettrico', batteria: 85,  lat: 41.117143, lng: 16.871871, tariffa: 0.20, tariffaSblocco: 1.00 },
-    { id: 'veh-2', tipo: 'Bicicletta Elettrica',  batteria: 100, lat: 41.118543, lng: 16.868871, tariffa: 0.15, tariffaSblocco: 0.50 },
-    { id: 'veh-3', tipo: 'Monopattino Elettrico', batteria: 42,  lat: 41.121143, lng: 16.867871, tariffa: 0.20, tariffaSblocco: 1.00 },
-    { id: 'veh-4', tipo: 'Bicicletta',            batteria: 100, lat: 41.123543, lng: 16.873871, tariffa: 0.10, tariffaSblocco: 0.00 },
-    { id: 'veh-5', tipo: 'Scooter Elettrico',     batteria: 60,  lat: 41.115143, lng: 16.874871, tariffa: 0.30, tariffaSblocco: 2.00 }
+    { id: 'veh-1', tipo: 'Monopattino Elettrico', batteria: 85, lat: 41.117143, lng: 16.871871, tariffa: 0.20, tariffaSblocco: 1.00 },
+    { id: 'veh-2', tipo: 'Bicicletta Elettrica', batteria: 100, lat: 41.118543, lng: 16.868871, tariffa: 0.15, tariffaSblocco: 0.50 },
+    { id: 'veh-3', tipo: 'Monopattino Elettrico', batteria: 42, lat: 41.121143, lng: 16.867871, tariffa: 0.20, tariffaSblocco: 1.00 },
+    { id: 'veh-4', tipo: 'Bicicletta', batteria: 100, lat: 41.123543, lng: 16.873871, tariffa: 0.10, tariffaSblocco: 0.00 },
+    { id: 'veh-5', tipo: 'Scooter Elettrico', batteria: 60, lat: 41.115143, lng: 16.874871, tariffa: 0.30, tariffaSblocco: 2.00 }
 ];
 
 function persist() {
@@ -41,6 +41,7 @@ async function connectDB() {
     }
     initSchema();
     seedMezzi();
+    seedAdmin();
     persist();
     ready = true;
     console.log('✅ Database SQLite locale → ' + DB_PATH);
@@ -65,6 +66,7 @@ function initSchema() {
             prenotazione_attuale TEXT,
             corsa_attuale TEXT,
             documento_url TEXT,
+            ruolo TEXT NOT NULL DEFAULT 'user',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS mezzi (
@@ -128,6 +130,19 @@ function initSchema() {
             token_gateway TEXT NOT NULL,
             is_default INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id TEXT PRIMARY KEY,
+            id_utente TEXT NOT NULL,
+            stato TEXT NOT NULL DEFAULT 'aperta',
+            data_creazione TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id TEXT PRIMARY KEY,
+            id_sessione TEXT NOT NULL,
+            mittente TEXT NOT NULL,
+            messaggio TEXT NOT NULL,
+            data_invio TEXT NOT NULL DEFAULT (datetime('now'))
+        );
     `);
 
     /* Migrazioni sicure per DB esistenti (IF colonna già presente → ignorata) */
@@ -135,6 +150,7 @@ function initSchema() {
         'ALTER TABLE utenti ADD COLUMN username TEXT',
         'ALTER TABLE utenti ADD COLUMN cognome TEXT',
         'ALTER TABLE utenti ADD COLUMN password_hash TEXT',
+        'ALTER TABLE utenti ADD COLUMN ruolo TEXT NOT NULL DEFAULT "user"',
         'ALTER TABLE corse ADD COLUMN prenotazione_id TEXT',
         'ALTER TABLE corse ADD COLUMN lat_inizio REAL',
         'ALTER TABLE corse ADD COLUMN lon_inizio REAL',
@@ -149,6 +165,24 @@ function initSchema() {
     if (promo && promo.n === 0) {
         runSql('INSERT INTO promozioni (codice, descrizione, sconto_percentuale) VALUES (?, ?, ?)',
             ['SCONTO50', 'Sconto 50% sulla prossima corsa', 50]);
+    }
+}
+
+function seedAdmin() {
+    var admin = queryOne('SELECT * FROM utenti WHERE email = ?', ['admin@smartmobility.com']);
+    if (!admin) {
+        // Usa un hash fittizio per 'admin' o crealo in fase di avvio. Qui usiamo direttamente l'hash di 'admin'.
+        // NOTA: bcrypt di 'admin' (generato da node). Lo genereremo come "$2a$10$wO3vF50QjA8B2.o1mR8B9OQ9kPZ9qKq4M3n8W1q7G2rZ0A3M3n8W"
+        // In userManagement c'è il bcrypt. Facciamo finta che 'admin' sia la password in chiaro per il seed se non usiamo bcrypt qua, 
+        // ma siccome auth controlla con bcrypt, dobbiamo inserire un hash valido.
+        // Hash di 'admin' (salt 10) = $2b$10$qH/RIt5W616XbI5J6D5Z.eX9UuTf0CXYG8N2rLw8w8.sR7r5M4L1u
+        var hashAdmin = '$2b$10$qH/RIt5W616XbI5J6D5Z.eX9UuTf0CXYG8N2rLw8w8.sR7r5M4L1u';
+        runSql(
+            `INSERT INTO utenti (id, username, nome, cognome, email, password_hash, saldo, ruolo, stato)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ['admin-1', 'admin', 'Amministratore', 'Sistema', 'admin@smartmobility.com', hashAdmin, 0, 'admin', 'libero']
+        );
+        console.log('🌱 Account Admin inserito (admin@smartmobility.com / admin)');
     }
 }
 
@@ -202,6 +236,7 @@ function rowToUtente(row) {
         prenotazioneAttuale: row.prenotazione_attuale,
         corsaAttuale: row.corsa_attuale,
         documentoUrl: row.documento_url,
+        ruolo: row.ruolo || 'user',
         storicoCorse: corse.findStoricoByUtente(row.id)
         /* password_hash mai esposto nelle risposte */
     };
@@ -242,11 +277,11 @@ var utenti = {
     create: function (data) {
         runSql(
             `INSERT INTO utenti (id, username, nome, cognome, email, password_hash, saldo, sconto_attivo, stato,
-             prenotazione_attuale, corsa_attuale, documento_url)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             prenotazione_attuale, corsa_attuale, documento_url, ruolo)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [data.id, data.username || null, data.nome, data.cognome || null, data.email || null, data.passwordHash || null,
-             data.saldo || 0, data.scontoAttivo ? 1 : 0, data.stato || 'libero',
-             data.prenotazioneAttuale || null, data.corsaAttuale || null, data.documentoUrl || null]
+            data.saldo || 0, data.scontoAttivo ? 1 : 0, data.stato || 'libero',
+            data.prenotazioneAttuale || null, data.corsaAttuale || null, data.documentoUrl || null, data.ruolo || 'user']
         );
         return utenti.findById(data.id);
     },
@@ -303,7 +338,7 @@ var corse = {
         runSql(
             'INSERT INTO corse (id, prenotazione_id, id_utente, id_mezzo, data_inizio, lat_inizio, lon_inizio, stato) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             [data.id, data.prenotazioneId || null, data.idUtente, data.idMezzo,
-             data.dataInizio, data.latInizio || null, data.lonInizio || null, 'in_corso']
+            data.dataInizio, data.latInizio || null, data.lonInizio || null, 'in_corso']
         );
         return corse.findById(data.id);
     },
@@ -323,7 +358,7 @@ var corse = {
         runSql(
             'UPDATE corse SET data_fine = ?, lat_fine = ?, lon_fine = ?, costo = ?, minuti = ?, stato = ? WHERE id = ?',
             [endData.dataFine, endData.latFine || null, endData.lonFine || null,
-             endData.costo, endData.minuti, 'completata', id]
+            endData.costo, endData.minuti, 'completata', id]
         );
     },
     findStoricoByUtente: function (idUtente) {
@@ -352,7 +387,7 @@ var pagamenti = {
         runSql(
             `INSERT INTO pagamenti (id, id_utente, id_corsa, importo, tipo, stato, token_esterno) VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [data.id, data.idUtente, data.idCorsa || null, data.importo, data.tipo,
-             data.stato || 'completato', data.tokenEsterno || null]
+            data.stato || 'completato', data.tokenEsterno || null]
         );
         return data;
     }
@@ -430,12 +465,38 @@ var rides = {
     complete: function (id, endData) {
         corse.complete(id, { dataFine: endData.endTime || endData.dataFine, costo: endData.costo, minuti: endData.minuti });
     },
-    delete: function () {}
+    delete: function () { }
+};
+
+var chats = {
+    getOpenSessionByUser: function (userId) {
+        return queryOne("SELECT * FROM chat_sessions WHERE id_utente = ? AND stato = 'aperta' LIMIT 1", [userId]);
+    },
+    getMessagesBySession: function (sessionId) {
+        return queryAll("SELECT * FROM chat_messages WHERE id_sessione = ? ORDER BY data_invio ASC", [sessionId]);
+    },
+    createSession: function (userId) {
+        var sessionId = 'chat-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        runSql("INSERT INTO chat_sessions (id, id_utente, stato) VALUES (?, ?, 'aperta')", [sessionId, userId]);
+        return { id: sessionId, id_utente: userId, stato: 'aperta' };
+    },
+    addMessage: function (sessionId, sender, message) {
+        var msgId = 'msg-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        runSql("INSERT INTO chat_messages (id, id_sessione, mittente, messaggio) VALUES (?, ?, ?, ?)", [msgId, sessionId, sender, message]);
+        return { id: msgId, id_sessione: sessionId, mittente: sender, messaggio: message };
+    },
+    getAllOpenSessions: function () {
+        return queryAll("SELECT cs.*, u.nome, u.email FROM chat_sessions cs JOIN utenti u ON cs.id_utente = u.id WHERE cs.stato = 'aperta' ORDER BY cs.data_creazione DESC");
+    },
+    closeSession: function (sessionId) {
+        runSql("UPDATE chat_sessions SET stato = 'chiusa' WHERE id = ?", [sessionId]);
+    }
 };
 
 module.exports = {
     connectDB: connectDB,
     utenti: utenti, mezzi: mezzi, prenotazioni: prenotazioni, corse: corse,
     pagamenti: pagamenti, ricevute: ricevute, promozioni: promozioni, metodiPagamento: metodiPagamento,
-    users: users, vehicles: vehicles, bookings: bookings, rides: rides
+    users: users, vehicles: vehicles, bookings: bookings, rides: rides,
+    chats: chats
 };

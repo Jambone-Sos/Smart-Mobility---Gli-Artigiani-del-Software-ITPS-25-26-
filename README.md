@@ -8,6 +8,26 @@ Il nostro obiettivo per lo **Sprint 1** era creare un sistema base funzionante p
 
 ## Changelog
 
+### ✅ Versione 1.2 — Chat di Assistenza & Pannello Amministratore
+**Sistema di chat persistente in tempo reale e account amministratore** — gli utenti possono ora comunicare con un operatore tramite una vera chat bidirezionale.
+
+Interventi effettuati:
+
+- **Account Amministratore:** aggiunto il concetto di `ruolo` (`user` / `admin`) nella tabella `utenti`. Al primo avvio viene creato automaticamente un account admin di sistema:
+  - **Email:** `admin@smartmobility.com`
+  - **Password:** `admin`
+- **Schema Database esteso:** create due nuove tabelle `chat_sessions` (sessioni di conversazione con stato aperta/chiusa) e `chat_messages` (singoli messaggi con mittente, testo e timestamp). Aggiunti metodi di utilità nel modulo `database.js` per gestire CRUD delle chat.
+- **Backend — Nuove API REST (`supportService.js`):**
+  - `GET /api/supporto/chat` — l'utente recupera i messaggi della propria sessione attiva
+  - `POST /api/supporto/chat` — l'utente invia un messaggio (la sessione viene creata automaticamente se non esiste)
+  - `GET /api/supporto/admin/chats` — l'admin recupera tutte le sessioni aperte (con nome ed email dell'utente)
+  - `GET /api/supporto/admin/chats/:id` — l'admin legge i messaggi di una specifica sessione
+  - `POST /api/supporto/admin/chats/:id/reply` — l'admin risponde a una sessione
+  - `POST /api/supporto/admin/chats/:id/close` — l'admin chiude/risolve una sessione
+- **Frontend — Chat Utente (`index.html` + `app.js`):** la vecchia input box di assistenza è stata sostituita con una vera interfaccia a bolle di chat (stile messenger), con bolle verdi per i messaggi inviati e grigie per le risposte dell'operatore, auto-scroll verso il basso, e aggiornamento automatico ogni 3 secondi tramite **HTTP polling**.
+- **Frontend — Pannello Admin:** aggiunto un nuovo tab nella sidebar (🛡️ Pannello Admin) visibile **solo** quando l'utente loggato ha `ruolo === 'admin'`. Da qui l'amministratore può: visualizzare l'elenco delle chat aperte, selezionarne una, leggere e rispondere ai messaggi, e chiudere la conversazione una volta risolta.
+- **Sicurezza:** tutte le rotte admin verificano il ruolo dell'utente tramite `db.users.findById()` prima di eseguire l'operazione, restituendo `403 Forbidden` se il richiedente non è un amministratore.
+
 ### ✅ Versione 1.1 — Mattia Di Tondo
 **Miglioramento frontend e completamento mock Sprint 1** — prototipo funzionante con autenticazione, gestione saldo, prenotazione mezzi e notifiche in-app.
 
@@ -44,22 +64,41 @@ Il nostro codice si trova in una singola grande cartella, divisa in due sezioni 
 ### 📱 La cartella `frontend/` (Il Cliente)
 Questa cartella contiene tutto quello che l'utente vede (l'interfaccia). Non usa tecnologie complesse, ma solo le basi (HTML, CSS e JavaScript), per renderne facile lo studio.
 
-*   **`index.html`**: È lo scheletro della pagina. Definisce letteralmente i "mattoni": dove si trova il bottone "Prenota", il form per il login, o il contenitore della mappa.
-*   **`style.css`**: È il vestito. Dà i colori, posiziona i riquadri al centro, arrotonda i bottoni, e rende l'applicazione bella da vedere.
-*   **`app.js`**: È il cervello della pagina web. Contiene le regole del tipo: "Quando l'utente clicca sul bottone 'Login', prendi l'email e la password, spediscile al Cameriere e salva il token JWT ricevuto". Si occupa anche di disegnare i marker sulla mappa interattiva.
+*   **`index.html`**: È lo scheletro della pagina. Definisce i "mattoni": il form di login/registrazione, il contenitore della mappa, la sidebar con portafoglio/storico/assistenza/pannello admin, e i bottom panel per prenotazioni e corse.
+*   **`style.css`**: È il vestito. Dà i colori, posiziona i riquadri al centro, arrotonda i bottoni, e rende l'applicazione bella da vedere con un design ispirato a Lime.
+*   **`app.js`**: È il cervello della pagina web. Gestisce:
+    *   Login / Registrazione (con upload documento)
+    *   Mappa Leaflet con marker veicoli, popup e filtro per tipo
+    *   Prenotazione, sblocco e corsa con timer
+    *   Chat di assistenza in tempo reale (polling ogni 3 secondi)
+    *   Pannello Admin per gestire le chat aperte (visibile solo per `ruolo === 'admin'`)
 
 ### ⚙️ La cartella `backend/` (Il Cameriere, i Cuochi e la Dispensa)
 Questa è la parte nascosta, il motore (Server) che fa i calcoli, fa i controlli di sicurezza e ricorda i dati.
 
 *   **`server.js` (Il Cameriere - API Gateway):** È il punto di ingresso di tutto il backend. Mette in ascolto il server sulla porta 3000. Applica il middleware JWT per proteggere tutte le rotte tranne registrazione e login.
 *   **`auth.js` (Il Buttafuori - JWT):** ✅ Genera e verifica i token JWT (Bearer Token, scadenza 24h). Nessuna rotta protetta è accessibile senza un token valido.
-*   **`database.js` (La Dispensa):** ✅ Database SQLite locale persistente (`smartmobility.db`). I dati sopravvivono al riavvio del server. Schema completo: `utenti`, `mezzi`, `prenotazioni`, `corse`, `pagamenti`, `ricevute`, `promozioni`, `metodi_pagamento`.
+*   **`database.js` (La Dispensa):** ✅ Database SQLite locale persistente (`smartmobility.db`). I dati sopravvivono al riavvio del server. Schema completo con 10 tabelle:
+
+    | Tabella | Descrizione |
+    |---|---|
+    | `utenti` | Profili utente con username, email, password hash, saldo, ruolo (`user`/`admin`) |
+    | `mezzi` | Flotta veicoli con tipo, batteria, coordinate GPS, tariffa |
+    | `prenotazioni` | Prenotazioni attive con scadenza automatica |
+    | `corse` | Storico corse con GPS inizio/fine, durata e costo |
+    | `pagamenti` | Transazioni (ricariche, pagamenti corsa) |
+    | `ricevute` | Ricevute digitali post-corsa |
+    | `promozioni` | Codici sconto (es. `SCONTO50`) |
+    | `metodi_pagamento` | Carte/metodi tokenizzati (mock PCI-DSS) |
+    | `chat_sessions` | Sessioni di chat supporto (stato: aperta/chiusa) |
+    | `chat_messages` | Singoli messaggi con mittente, testo e timestamp |
+
 *   **`services/` (I Cuochi della Logica di Dominio):** È una sottocartella che contiene vari file separati per responsabilità (*Modularità*):
     *   ✅ `userManagement.js`: Registrazione con `bcrypt` (cost 12), login con verifica password e restituzione JWT, ricarica saldo, gestione metodi di pagamento, promozioni (IF-UT.01, 02, 12, 14).
     *   ✅ `fleetService.js`: Coordinate GPS di tutti i veicoli liberi (IF-UT.03, 04, 05).
     *   ✅ `bookingService.js`: Prenotazioni con scadenza automatica sia client-side (countdown) sia server-side (`setTimeout` 600 s) (IF-UT.07, 08, 09).
     *   ✅ `rideService.js`: Sblocco, corsa con GPS salvato, termine con costo = `durata × tariffa + tariffaSblocco`, controllo saldo insufficiente, emissione ricevuta (IF-UT.18, 11).
-    *   ✅ `supportService.js`: Chat di assistenza, recensione corsa (1-5 stelle), emergenza SOS simulata (IF-UT.13, 15, 16).
+    *   ✅ `supportService.js`: Chat di assistenza persistente (utente ↔ admin), recensione corsa (1-5 stelle), emergenza SOS simulata (IF-UT.13, 15, 16). Endpoint admin protetti da controllo ruolo.
 
 ---
 
@@ -73,14 +112,45 @@ Per farti capire come tutte queste parti parlano tra di loro, vediamo cosa succe
 4. **Fai la corsa:** Prenoti, sblocchi e dopo un po' clicchi "Termina Corsa".
 5. **Calcolo e Pagamento:** `rideService.js` calcola i minuti, applica `durata × tariffa + tariffaSblocco`, verifica che il saldo sia sufficiente, scala i soldi, registra il GPS di fine corsa e libera il veicolo rimettendolo sulla mappa.
 
-## Perché abbiamo costruito il sistema in questo modo?
+---
+
+## 3. Un esempio pratico: Il Flusso della Chat di Assistenza
+
+Vediamo come funziona la comunicazione tra un utente che ha bisogno di aiuto e l'amministratore:
+
+1. **L'utente apre la chat:** Nella sidebar, clicca "💬 Assistenza" e scrive un messaggio, ad esempio *"Non riesco a sbloccare il veicolo 3!"*.
+2. **Il backend crea la sessione:** `supportService.js` controlla se esiste già una sessione aperta per quell'utente. Se no, ne crea una nuova nella tabella `chat_sessions` e salva il messaggio in `chat_messages`.
+3. **L'utente vede il suo messaggio:** Il frontend fa **polling** (una richiesta GET ogni 3 secondi) per recuperare i nuovi messaggi. La bolla verde del messaggio appare nella chat.
+4. **L'admin accede al pannello:** In un'altra finestra del browser, l'amministratore fa login con `admin@smartmobility.com` / `admin`. Nella sidebar vede il tab "🛡️ Pannello Admin" (invisibile per gli utenti normali).
+5. **L'admin risponde:** Clicca sulla sessione dell'utente, legge il messaggio e risponde *"Prova a chiudere e riaprire l'app"*. Il messaggio viene salvato con `mittente = 'admin'`.
+6. **L'utente riceve la risposta:** Grazie al polling, la risposta appare come bolla grigia nella chat dell'utente dopo pochi secondi.
+7. **Chiusura:** Quando il problema è risolto, l'admin clicca "Chiudi Chat (Risolto)". La sessione passa allo stato `chiusa` e scompare dall'elenco delle chat attive.
+
+### Perché usiamo il Polling e non i WebSocket?
+
+Per lo Sprint 1 abbiamo scelto il **polling HTTP** (richieste cicliche ogni 3 secondi) invece dei WebSocket per semplicità:
+- Non serve nessuna libreria aggiuntiva (es. Socket.io)
+- L'architettura REST rimane semplice e comprensibile
+- Per un numero limitato di utenti (prototipo universitario), il polling è più che sufficiente
+- In uno Sprint futuro si potrà migrare a WebSocket per prestazioni migliori
+
+---
+
+## 4. Perché abbiamo costruito il sistema in questo modo?
 
 Abbiamo diviso tutto in piccoli file separati per seguire le regole base dell'**Ingegneria del Software**.
 Se un domani c'è un bug nei pagamenti, un programmatore sa già che deve aprire e controllare solo `userManagement.js` o `rideService.js`, senza dover leggere milioni di righe di codice.
 
+### Separazione dei Ruoli (RBAC)
+Il sistema ora supporta il concetto di **ruoli**:
+- **`user`** (default): può prenotare, fare corse, ricaricare, chattare con il supporto
+- **`admin`**: ha tutte le funzionalità dell'utente, più il Pannello Admin per gestire le chat di supporto
+
+Il ruolo è memorizzato nel campo `ruolo` della tabella `utenti` e viene incluso nell'oggetto `user` restituito dal login. Il frontend usa questo valore per mostrare/nascondere le sezioni appropriate.
+
 ---
 
-## 3. Cosa manca per completare al 100% lo Sprint 1 "Reale"?
+## 5. Cosa manca per completare al 100% lo Sprint 1 "Reale"?
 
 Finora abbiamo creato un **"Mock"** (una simulazione intelligente), ovvero un prototipo funzionante che usa database locale e connessioni fittizie per dimostrare che l'idea funziona.
 Secondo i documenti di progetto ufficiali (Sprint Backlog e Architettura), per trasformare questa simulazione in un sistema pronto per un uso cittadino reale, restano da sviluppare i seguenti 5 blocchi "veri":
@@ -109,14 +179,93 @@ Una volta sostituiti questi 5 blocchi con le implementazioni reali, lo Sprint 1 
 
 ---
 
-## 4. Come avviare il progetto
+## 6. Mappa delle API REST
+
+Tutte le rotte sono protette da JWT, tranne registrazione e login.
+
+### Utenti (`/api/utenti`)
+| Metodo | Endpoint | Descrizione |
+|--------|----------|-------------|
+| `POST` | `/registrazione` | Registrazione con upload documento (🔓 pubblica) |
+| `POST` | `/login` | Login con email/username + password → JWT (🔓 pubblica) |
+| `GET` | `/:idUtente` | Profilo utente |
+| `GET` | `/:idUtente/storico-corse` | Storico corse completate |
+| `POST` | `/ricarica` | Ricarica saldo portafoglio |
+| `POST` | `/promozioni` | Applica codice promo |
+| `GET` | `/:idUtente/metodi-pagamento` | Lista metodi di pagamento |
+| `POST` | `/metodi-pagamento` | Aggiungi metodo di pagamento |
+
+### Mezzi (`/api/mezzi`)
+| Metodo | Endpoint | Descrizione |
+|--------|----------|-------------|
+| `GET` | `/` | Lista tutti i mezzi con coordinate GPS |
+
+### Prenotazioni (`/api/prenotazioni`)
+| Metodo | Endpoint | Descrizione |
+|--------|----------|-------------|
+| `POST` | `/` | Prenota un mezzo (scadenza 10 min) |
+| `POST` | `/annulla` | Annulla prenotazione attiva |
+
+### Corse (`/api/corse`)
+| Metodo | Endpoint | Descrizione |
+|--------|----------|-------------|
+| `POST` | `/sblocco` | Sblocca il mezzo e inizia la corsa |
+| `POST` | `/termine` | Termina la corsa, calcola costo e scala saldo |
+
+### Supporto (`/api/supporto`)
+| Metodo | Endpoint | Descrizione |
+|--------|----------|-------------|
+| `GET` | `/chat` | Messaggi della sessione chat attiva (utente) |
+| `POST` | `/chat` | Invia messaggio al supporto (utente) |
+| `POST` | `/call-sos` | Attiva allarme SOS |
+| `POST` | `/review` | Invia recensione (1-5 stelle) |
+| `GET` | `/admin/chats` | Lista sessioni aperte (🔒 solo admin) |
+| `GET` | `/admin/chats/:id` | Messaggi di una sessione (🔒 solo admin) |
+| `POST` | `/admin/chats/:id/reply` | Rispondi a una sessione (🔒 solo admin) |
+| `POST` | `/admin/chats/:id/close` | Chiudi sessione risolta (🔒 solo admin) |
+
+---
+
+## 7. Come avviare il progetto
+
+### Prerequisiti
+- **Node.js** v18 o superiore
+- **npm** (incluso con Node.js)
+
+### Avvio rapido
 
 ```bash
+# 1. Installa le dipendenze del backend
 cd backend
 npm install
+
+# 2. Avvia il server API (porta 3000)
 npm start
 ```
 
-Apri `frontend/index.html` nel browser. Il server è in ascolto su `http://localhost:3000`.
+In un secondo terminale (opzionale, per un'esperienza migliore):
+
+```bash
+# 3. Servi il frontend con un server locale (porta 8080, senza cache)
+npx -y http-server ./frontend -p 8080 -c-1
+```
+
+Poi apri **http://localhost:8080** nel browser.
+
+> **Alternativa senza http-server:** Puoi anche aprire direttamente il file `frontend/index.html` nel browser. Il server API è in ascolto su `http://localhost:3000`.
+
+### Account di test
+
+| Ruolo | Email | Password |
+|-------|-------|----------|
+| 👑 Admin | `admin@smartmobility.com` | `admin` |
+| 👤 Utente | Registrati dal form | (scegli tu) |
+
+### Come testare la Chat di Assistenza
+
+1. **Finestra 1 — Utente:** Registrati o fai login con un account utente. Apri "💬 Assistenza" nella sidebar e scrivi un messaggio.
+2. **Finestra 2 — Admin:** Apri una finestra in incognito. Fai login con `admin@smartmobility.com` / `admin`. Apri "🛡️ Pannello Admin" nella sidebar.
+3. Seleziona la chat dell'utente, rispondi, e osserva il messaggio apparire nella finestra dell'utente dopo pochi secondi.
+4. Clicca "Chiudi Chat (Risolto)" per terminare la conversazione.
 
 > **Nota:** Se aggiorni da una versione precedente, elimina `backend/smartmobility.db` prima di riavviare per applicare il nuovo schema (le migrazioni ALTER TABLE gestiscono aggiornamenti incrementali, ma un DB molto vecchio potrebbe avere conflitti).

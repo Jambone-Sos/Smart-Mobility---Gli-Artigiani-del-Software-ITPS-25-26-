@@ -8,23 +8,23 @@ var API_BASE = 'http://localhost:3000/api';
 var MAP_TILES = {
     satellite: [
         {
-            url:  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             opts: { attribution: '© Esri · Earthstar Geographics', maxZoom: 20 }
         },
         {
-            url:  'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+            url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
             opts: { maxZoom: 20, opacity: 0.75 }
         }
     ],
     dark: [
         {
-            url:  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
             opts: { attribution: '© OpenStreetMap © CARTO', maxZoom: 20, subdomains: 'abcd' }
         }
     ],
     light: [
         {
-            url:  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+            url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
             opts: { attribution: '© OpenStreetMap © CARTO', maxZoom: 20, subdomains: 'abcd' }
         }
     ]
@@ -33,20 +33,22 @@ var MAP_TILES = {
 var MAP_STYLE_LABELS = { satellite: 'Satellite', dark: 'Scuro', light: 'Chiaro' };
 
 var state = {
-    user:                 null,
-    token:                null,   /* JWT Bearer Token (IFC-01) */
-    vehicles:             [],
-    map:                  null,
-    markers:              [],
-    tileLayers:           [],
-    mapStyle:             'satellite',
-    mapPickerInit:        false,
+    user: null,
+    token: null,   /* JWT Bearer Token (IFC-01) */
+    vehicles: [],
+    map: null,
+    markers: [],
+    tileLayers: [],
+    mapStyle: 'satellite',
+    mapPickerInit: false,
     bookingTimerInterval: null,
-    rideTimerInterval:    null,
-    vehicleFilter:        'all',
-    filterPanelOpen:      false,
-    sidebarOpen:          false,
-    selectedRating:       0
+    rideTimerInterval: null,
+    vehicleFilter: 'all',
+    filterPanelOpen: false,
+    sidebarOpen: false,
+    selectedRating: 0,
+    chatPollingInterval: null,
+    activeAdminChat: null
 };
 
 /* ── 2. HELPER HEADERS ─────────────────────────────────────────── */
@@ -58,7 +60,7 @@ function authHeaders() {
 }
 
 /* ── 3. INIT ────────────────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', function () {
+function initApp() {
 
     /* Auth */
     document.getElementById('tab-login').addEventListener('click', function () { switchAuthTab('login'); });
@@ -97,21 +99,32 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('btn-recharge').addEventListener('click', handleRecharge);
     document.getElementById('btn-apply-promo').addEventListener('click', handlePromo);
     document.getElementById('btn-load-history').addEventListener('click', loadHistory);
-    document.getElementById('btn-send-chat').addEventListener('click', handleChat);
+    document.getElementById('btn-send-chat').addEventListener('click', handleUserChatSend);
     document.getElementById('btn-send-rating').addEventListener('click', handleRating);
     document.getElementById('btn-sos').addEventListener('click', handleSOS);
     document.getElementById('btn-logout').addEventListener('click', handleLogout);
 
+    /* Admin Chat */
+    document.getElementById('btn-admin-refresh-chats').addEventListener('click', loadAdminChats);
+    document.getElementById('btn-admin-send-chat').addEventListener('click', handleAdminChatReply);
+    document.getElementById('btn-admin-close-chat').addEventListener('click', handleAdminChatClose);
+
     /* Stelle valutazione interattive */
     initStarRating();
+}
 
-});
+/* Esegui subito se il DOM è già pronto, altrimenti aspetta */
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
 
 /* ── 4. AUTH ────────────────────────────────────────────────────── */
 function switchAuthTab(tab) {
     document.getElementById('tab-login').classList.toggle('active', tab === 'login');
     document.getElementById('tab-register').classList.toggle('active', tab === 'register');
-    document.getElementById('form-login').style.display    = tab === 'login'    ? 'flex' : 'none';
+    document.getElementById('form-login').style.display = tab === 'login' ? 'flex' : 'none';
     document.getElementById('form-register').style.display = tab === 'register' ? 'flex' : 'none';
     document.getElementById('auth-feedback').textContent = '';
 }
@@ -121,11 +134,11 @@ function showAuthError(msg) {
 }
 
 async function handleLogin() {
-    var email    = document.getElementById('login-email').value.trim();
+    var email = document.getElementById('login-email').value.trim();
     var password = document.getElementById('login-password').value;
     if (!email || !password) return showAuthError('Email e password sono obbligatori');
     try {
-        var res  = await fetch(API_BASE + '/utenti/login', {
+        var res = await fetch(API_BASE + '/utenti/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: email, password: password })
@@ -138,28 +151,28 @@ async function handleLogin() {
 
 async function handleRegister() {
     var username = document.getElementById('register-username').value.trim();
-    var nome     = document.getElementById('register-nome').value.trim();
-    var cognome  = document.getElementById('register-cognome').value.trim();
-    var email    = document.getElementById('register-email').value.trim();
+    var nome = document.getElementById('register-nome').value.trim();
+    var cognome = document.getElementById('register-cognome').value.trim();
+    var email = document.getElementById('register-email').value.trim();
     var password = document.getElementById('register-password').value;
-    var docFile  = document.getElementById('register-doc').files[0];
+    var docFile = document.getElementById('register-doc').files[0];
 
     if (!username) return showAuthError('Inserisci un username');
-    if (!nome)     return showAuthError('Inserisci un nome');
-    if (!email)    return showAuthError('Inserisci una email');
+    if (!nome) return showAuthError('Inserisci un nome');
+    if (!email) return showAuthError('Inserisci una email');
     if (!password || password.length < 6) return showAuthError('La password deve essere di almeno 6 caratteri');
-    if (!docFile)  return showAuthError('Inserisci il documento d\'identità');
+    if (!docFile) return showAuthError('Inserisci il documento d\'identità');
 
     var formData = new FormData();
     formData.append('username', username);
     formData.append('nome', nome);
-    if (cognome)  formData.append('cognome', cognome);
+    if (cognome) formData.append('cognome', cognome);
     formData.append('email', email);
     formData.append('password', password);
     formData.append('documento', docFile);
 
     try {
-        var res  = await fetch(API_BASE + '/utenti/registrazione', { method: 'POST', body: formData });
+        var res = await fetch(API_BASE + '/utenti/registrazione', { method: 'POST', body: formData });
         var data = await res.json();
         if (res.ok) { state.user = data.user; state.token = data.token; showApp(); }
         else showAuthError(data.error || 'Errore durante la registrazione');
@@ -171,6 +184,7 @@ function handleLogout() {
     state.token = null;
     clearInterval(state.bookingTimerInterval);
     clearInterval(state.rideTimerInterval);
+    clearInterval(state.chatPollingInterval);
     closeSidebar();
     document.getElementById('app-screen').style.display  = 'none';
     document.getElementById('auth-screen').style.display = 'flex';
@@ -179,7 +193,7 @@ function handleLogout() {
 /* ── 5. SHOW APP ────────────────────────────────────────────────── */
 function showApp() {
     document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('app-screen').style.display  = 'block';
+    document.getElementById('app-screen').style.display = 'block';
     initMap();
     initMapStylePicker();
     loadVehicles();
@@ -194,7 +208,7 @@ function initMap() {
     if (state.map) return;
 
     state.map = L.map('map', {
-        zoomControl:        false,
+        zoomControl: false,
         attributionControl: true
     }).setView([41.1171, 16.8719], 16);
 
@@ -225,9 +239,9 @@ function initMapStylePicker() {
     if (state.mapPickerInit) return;
     state.mapPickerInit = true;
 
-    var picker  = document.getElementById('map-style-picker');
-    var panel   = document.getElementById('msp-panel');
-    var toggle  = document.getElementById('btn-map-style');
+    var picker = document.getElementById('map-style-picker');
+    var panel = document.getElementById('msp-panel');
+    var toggle = document.getElementById('btn-map-style');
 
     picker.classList.remove('hidden');
 
@@ -250,21 +264,21 @@ function initMapStylePicker() {
 
 /* ── 7. MARKER ZOOM-DIPENDENTI ──────────────────────────────────── */
 function getVehicleColor(tipo) {
-    if (tipo.includes('Monopattino'))         return '#00C566';
+    if (tipo.includes('Monopattino')) return '#00C566';
     if (tipo.includes('Bicicletta Elettrica')) return '#0A84FF';
-    if (tipo.includes('Bicicletta'))          return '#34C759';
-    if (tipo.includes('Scooter'))             return '#FF9F0A';
+    if (tipo.includes('Bicicletta')) return '#34C759';
+    if (tipo.includes('Scooter')) return '#FF9F0A';
     return '#00C566';
 }
 function getVehicleEmoji(tipo) {
     if (tipo.includes('Monopattino')) return '🛴';
-    if (tipo.includes('Bicicletta'))  return '🚲';
-    if (tipo.includes('Scooter'))     return '🛵';
+    if (tipo.includes('Bicicletta')) return '🚲';
+    if (tipo.includes('Scooter')) return '🛵';
     return '🛴';
 }
 
 function buildMarkerIcon(vehicle) {
-    var zoom  = state.map ? state.map.getZoom() : 15;
+    var zoom = state.map ? state.map.getZoom() : 15;
     var color = getVehicleColor(vehicle.tipo);
 
     if (zoom < 15) {
@@ -272,16 +286,16 @@ function buildMarkerIcon(vehicle) {
         return L.divIcon({
             className: '',
             html: '<div class="v-dot pulse" style="width:' + sz + 'px;height:' + sz + 'px;background:' + color + '"></div>',
-            iconSize:   [sz, sz],
+            iconSize: [sz, sz],
             iconAnchor: [sz / 2, sz / 2]
         });
     } else {
         var emoji = getVehicleEmoji(vehicle.tipo);
-        var size  = zoom >= 17 ? 46 : 40;
+        var size = zoom >= 17 ? 46 : 40;
         return L.divIcon({
             className: '',
             html: '<div class="v-icon" style="width:' + size + 'px;height:' + size + 'px;background:' + color + '">' + emoji + '</div>',
-            iconSize:   [size, size],
+            iconSize: [size, size],
             iconAnchor: [size / 2, size / 2]
         });
     }
@@ -295,7 +309,7 @@ function batteryColor(pct) {
 
 async function loadVehicles() {
     try {
-        var res  = await fetch(API_BASE + '/mezzi', { headers: authHeaders() });
+        var res = await fetch(API_BASE + '/mezzi', { headers: authHeaders() });
         var data = await res.json();
         if (res.status === 401) { handleLogout(); return; }
         state.vehicles = data.mezzi;
@@ -350,7 +364,20 @@ function switchSidebarSection(section) {
     document.querySelectorAll('.sb-section').forEach(function (s) {
         s.classList.toggle('active', s.id === 'section-' + section);
     });
+
+    clearInterval(state.chatPollingInterval);
+
     if (section === 'storico') loadHistory();
+    else if (section === 'assistenza') {
+        loadUserChat();
+        state.chatPollingInterval = setInterval(loadUserChat, 3000);
+    }
+    else if (section === 'admin') {
+        loadAdminChats();
+        if (state.activeAdminChat) {
+            state.chatPollingInterval = setInterval(loadAdminChatMessages, 3000);
+        }
+    }
 }
 
 function updateTopBar() {
@@ -360,19 +387,26 @@ function updateTopBar() {
 
 function updateSidebar() {
     if (!state.user) return;
-    document.getElementById('sb-avatar').textContent   = state.user.nome.charAt(0).toUpperCase();
+    document.getElementById('sb-avatar').textContent = state.user.nome.charAt(0).toUpperCase();
     document.getElementById('sb-greeting').textContent = 'Ciao, ' + state.user.nome + '!';
-    document.getElementById('sb-saldo').textContent    = '€ ' + parseFloat(state.user.saldo).toFixed(2);
+    document.getElementById('sb-saldo').textContent = '€ ' + parseFloat(state.user.saldo).toFixed(2);
+
+    if (state.user.ruolo === 'admin') {
+        document.getElementById('nav-btn-admin').style.display = 'flex';
+    } else {
+        document.getElementById('nav-btn-admin').style.display = 'none';
+    }
+
     updateStats();
 }
 
 function updateStats() {
     if (!state.user) return;
-    var corse    = state.user.storicoCorse || [];
-    var totMin   = corse.reduce(function (s, c) { return s + (parseInt(c.minuti) || 0); }, 0);
+    var corse = state.user.storicoCorse || [];
+    var totMin = corse.reduce(function (s, c) { return s + (parseInt(c.minuti) || 0); }, 0);
     var kmStimati = Math.round(totMin / 60 * 15 * 10) / 10;
     document.getElementById('stat-corse').textContent = corse.length;
-    document.getElementById('stat-km').textContent    = kmStimati % 1 === 0 ? kmStimati : kmStimati.toFixed(1);
+    document.getElementById('stat-km').textContent = kmStimati % 1 === 0 ? kmStimati : kmStimati.toFixed(1);
 }
 
 /* ── 9. FILTRO VEICOLI ──────────────────────────────────────────── */
@@ -399,14 +433,14 @@ window.bookVehicle = async function (vehicleId) {
         return showToast('Hai già una prenotazione o corsa attiva');
     }
     try {
-        var res  = await fetch(API_BASE + '/prenotazioni', {
+        var res = await fetch(API_BASE + '/prenotazioni', {
             method: 'POST',
             headers: authHeaders(),
             body: JSON.stringify({ userId: state.user.id, vehicleId: vehicleId })
         });
         var data = await res.json();
         if (res.ok) {
-            state.user.stato               = 'prenotato';
+            state.user.stato = 'prenotato';
             state.user.prenotazioneAttuale = data.idPrenotazione;
             state.map.closePopup();
             loadVehicles();
@@ -426,7 +460,7 @@ async function handleCancelBooking() {
             body: JSON.stringify({ userId: state.user.id })
         });
         if (res.ok) {
-            state.user.stato               = 'libero';
+            state.user.stato = 'libero';
             state.user.prenotazioneAttuale = null;
             clearInterval(state.bookingTimerInterval);
             syncBottomPanels();
@@ -439,7 +473,7 @@ async function handleCancelBooking() {
 /* ── 11. CORSA ──────────────────────────────────────────────────── */
 async function handleUnlockVehicle() {
     try {
-        var res  = await fetch(API_BASE + '/corse/sblocco', {
+        var res = await fetch(API_BASE + '/corse/sblocco', {
             method: 'POST',
             headers: authHeaders(),
             body: JSON.stringify({ userId: state.user.id })
@@ -447,9 +481,9 @@ async function handleUnlockVehicle() {
         var data = await res.json();
         if (res.ok) {
             clearInterval(state.bookingTimerInterval);
-            state.user.stato               = 'in_corsa';
+            state.user.stato = 'in_corsa';
             state.user.prenotazioneAttuale = null;
-            state.user.corsaAttuale        = data.idCorsa;
+            state.user.corsaAttuale = data.idCorsa;
             syncBottomPanels();
             showToast('Mezzo sbloccato! Buona corsa 🛴');
         } else { showToast(data.error); }
@@ -458,7 +492,7 @@ async function handleUnlockVehicle() {
 
 async function handleEndRide() {
     try {
-        var res  = await fetch(API_BASE + '/corse/termine', {
+        var res = await fetch(API_BASE + '/corse/termine', {
             method: 'POST',
             headers: authHeaders(),
             body: JSON.stringify({ userId: state.user.id })
@@ -466,9 +500,9 @@ async function handleEndRide() {
         var data = await res.json();
         if (res.ok) {
             clearInterval(state.rideTimerInterval);
-            state.user.stato        = 'libero';
+            state.user.stato = 'libero';
             state.user.corsaAttuale = null;
-            state.user.saldo        = parseFloat(data.nuovoSaldo);
+            state.user.saldo = parseFloat(data.nuovoSaldo);
 
             updateSidebar();
             syncBottomPanels();
@@ -508,7 +542,7 @@ async function handleRecharge() {
     if (!importo || importo <= 0) return showToast('Inserisci un importo valido');
 
     try {
-        var res  = await fetch(API_BASE + '/utenti/ricarica', {
+        var res = await fetch(API_BASE + '/utenti/ricarica', {
             method: 'POST',
             headers: authHeaders(),
             body: JSON.stringify({ idUtente: state.user.id, importo: importo })
@@ -530,7 +564,7 @@ async function handlePromo() {
     var codice = document.getElementById('input-promo').value.trim();
     if (!codice) return showToast('Inserisci un codice promo');
     try {
-        var res  = await fetch(API_BASE + '/utenti/promozioni', {
+        var res = await fetch(API_BASE + '/utenti/promozioni', {
             method: 'POST',
             headers: authHeaders(),
             body: JSON.stringify({ userId: state.user.id, codice: codice })
@@ -544,7 +578,7 @@ async function handlePromo() {
 async function loadHistory() {
     if (!state.user || !state.token) return;
     try {
-        var res  = await fetch(API_BASE + '/utenti/' + state.user.id + '/storico-corse', {
+        var res = await fetch(API_BASE + '/utenti/' + state.user.id + '/storico-corse', {
             headers: authHeaders()
         });
         var data = await res.json();
@@ -557,8 +591,8 @@ async function loadHistory() {
                 li.className = 'sb-history-item';
                 li.innerHTML =
                     '<div class="sb-history-meta">' +
-                        '<span class="sb-history-date">' + c.data + '</span>' +
-                        '<span class="sb-history-details">' + (c.tipoVeicolo || '') + ' · ' + c.minuti + ' min</span>' +
+                    '<span class="sb-history-date">' + c.data + '</span>' +
+                    '<span class="sb-history-details">' + (c.tipoVeicolo || '') + ' · ' + c.minuti + ' min</span>' +
                     '</div>' +
                     '<span class="sb-history-cost">€' + c.costo + '</span>';
                 list.appendChild(li);
@@ -571,19 +605,125 @@ async function loadHistory() {
     } catch (e) { console.error('Errore storico:', e); }
 }
 
-async function handleChat() {
+async function loadUserChat() {
+    try {
+        var res = await fetch(API_BASE + '/supporto/chat', { headers: authHeaders() });
+        var data = await res.json();
+        var container = document.getElementById('chat-messages');
+        if (data.messaggi && data.messaggi.length > 0) {
+            container.innerHTML = '';
+            data.messaggi.forEach(function (msg) {
+                var isMe = msg.mittente === state.user.id;
+                var align = isMe ? 'flex-end' : 'flex-start';
+                var bg = isMe ? '#00C566' : '#e9ecef';
+                var color = isMe ? '#fff' : '#000';
+                container.innerHTML += '<div style="align-self: ' + align + '; background: ' + bg + '; color: ' + color + '; padding: 8px 12px; border-radius: 12px; max-width: 80%; word-wrap: break-word;">' + msg.messaggio + '</div>';
+            });
+            container.scrollTop = container.scrollHeight;
+        } else {
+            container.innerHTML = '<p style="font-size: 0.85rem; color: #999; text-align: center;">Invia un messaggio per iniziare o attendi una risposta.</p>';
+        }
+    } catch (e) { }
+}
+
+async function handleUserChatSend() {
     var msg = document.getElementById('input-chat').value.trim();
     if (!msg) return;
     try {
-        var res  = await fetch(API_BASE + '/supporto/chat', {
+        var res = await fetch(API_BASE + '/supporto/chat', {
             method: 'POST',
             headers: authHeaders(),
             body: JSON.stringify({ messaggio: msg })
         });
-        var data = await res.json();
-        showToast(data.messaggio);
-        document.getElementById('input-chat').value = '';
+        if (res.ok) {
+            document.getElementById('input-chat').value = '';
+            loadUserChat();
+        }
     } catch (e) { showToast('Errore di rete'); }
+}
+
+async function loadAdminChats() {
+    try {
+        var res = await fetch(API_BASE + '/supporto/admin/chats', { headers: authHeaders() });
+        var data = await res.json();
+        var list = document.getElementById('admin-chat-list');
+        list.innerHTML = '';
+        if (data.sessions && data.sessions.length > 0) {
+            data.sessions.forEach(function (s) {
+                var li = document.createElement('li');
+                li.className = 'sb-history-item';
+                li.style.cursor = 'pointer';
+                li.innerHTML = '<div class="sb-history-meta"><span class="sb-history-date">' + s.data_creazione + '</span><span class="sb-history-details">' + s.nome + ' (' + s.email + ')</span></div>';
+                li.onclick = function () { openAdminChat(s.id, s.email); };
+                list.appendChild(li);
+            });
+        } else {
+            list.innerHTML = '<li class="sb-history-empty">Nessuna chat aperta.</li>';
+        }
+    } catch (e) { }
+}
+
+function openAdminChat(id, email) {
+    state.activeAdminChat = id;
+    document.getElementById('admin-chat-user-email').textContent = email;
+    document.getElementById('admin-chat-view').style.display = 'flex';
+    clearInterval(state.chatPollingInterval);
+    loadAdminChatMessages();
+    state.chatPollingInterval = setInterval(loadAdminChatMessages, 3000);
+}
+
+async function loadAdminChatMessages() {
+    if (!state.activeAdminChat) return;
+    try {
+        var res = await fetch(API_BASE + '/supporto/admin/chats/' + state.activeAdminChat, { headers: authHeaders() });
+        var data = await res.json();
+        var container = document.getElementById('admin-chat-messages');
+        container.innerHTML = '';
+        if (data.messaggi) {
+            data.messaggi.forEach(function (msg) {
+                var isAdmin = msg.mittente === 'admin';
+                var align = isAdmin ? 'flex-end' : 'flex-start';
+                var bg = isAdmin ? '#00C566' : '#e9ecef';
+                var color = isAdmin ? '#fff' : '#000';
+                container.innerHTML += '<div style="align-self: ' + align + '; background: ' + bg + '; color: ' + color + '; padding: 8px 12px; border-radius: 12px; max-width: 80%; word-wrap: break-word;">' + msg.messaggio + '</div>';
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+    } catch (e) { }
+}
+
+async function handleAdminChatReply() {
+    if (!state.activeAdminChat) return;
+    var msg = document.getElementById('admin-input-chat').value.trim();
+    if (!msg) return;
+    try {
+        var res = await fetch(API_BASE + '/supporto/admin/chats/' + state.activeAdminChat + '/reply', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({ messaggio: msg })
+        });
+        if (res.ok) {
+            document.getElementById('admin-input-chat').value = '';
+            loadAdminChatMessages();
+        }
+    } catch (e) { }
+}
+
+async function handleAdminChatClose() {
+    if (!state.activeAdminChat) return;
+    try {
+        var res = await fetch(API_BASE + '/supporto/admin/chats/' + state.activeAdminChat + '/close', {
+            method: 'POST',
+            headers: authHeaders()
+        });
+        if (res.ok) {
+            state.activeAdminChat = null;
+            document.getElementById('admin-chat-view').style.display = 'none';
+            clearInterval(state.chatPollingInterval);
+            loadAdminChats();
+            showToast('Chat chiusa con successo.');
+        }
+    } catch (e) { }
 }
 
 function initStarRating() {
@@ -615,7 +755,7 @@ function initStarRating() {
 async function handleRating() {
     if (!state.selectedRating) return showToast('Seleziona un voto (1-5 stelle)');
     try {
-        var res  = await fetch(API_BASE + '/supporto/recensione', {
+        var res = await fetch(API_BASE + '/supporto/recensione', {
             method: 'POST',
             headers: authHeaders(),
             body: JSON.stringify({ stelle: state.selectedRating })
@@ -630,7 +770,7 @@ async function handleRating() {
 async function handleSOS() {
     if (!confirm('Vuoi davvero inviare una chiamata di emergenza?')) return;
     try {
-        var res  = await fetch(API_BASE + '/supporto/sos', {
+        var res = await fetch(API_BASE + '/supporto/sos', {
             method: 'POST',
             headers: authHeaders()
         });
@@ -678,3 +818,5 @@ function showToast(msg) {
     clearTimeout(showToast._tid);
     showToast._tid = setTimeout(function () { t.classList.add('hidden'); }, 3500);
 }
+
+

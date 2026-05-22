@@ -1,3 +1,6 @@
 node_modules/
 .env
 .DS_Store
+*.db
+backend/uploads/
+package-lock.json
