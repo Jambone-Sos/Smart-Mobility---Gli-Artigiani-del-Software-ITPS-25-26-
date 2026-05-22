@@ -99,7 +99,7 @@ router.post('/registrazione', upload.single('documento'), async function (req, r
  * IF-UT.01 — Login (email + password → JWT)
  * POST /api/utenti/login
  */
-router.post('/login', function (req, res) {
+router.post('/login', async function (req, res) {
     var email = req.body.email;
     var password = req.body.password;
     if (!email || !password) {
@@ -121,9 +121,9 @@ router.post('/login', function (req, res) {
     }
 
     var token = auth.generateToken(user.id);
-    notificationService.sendLoginAlertEmail(user.email, user.nome);
+    var emailPreviewUrl = await notificationService.sendLoginAlertEmail(user.email, user.nome);
     console.log('🔑 Login:', user.nome);
-    res.json({ messaggio: 'Login effettuato.', token: token, userId: user.id, user: user });
+    res.json({ messaggio: 'Login effettuato.', token: token, userId: user.id, user: user, emailPreviewUrl: emailPreviewUrl });
 });
 
 /**

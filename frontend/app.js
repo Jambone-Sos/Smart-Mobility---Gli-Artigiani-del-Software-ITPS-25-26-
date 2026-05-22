@@ -144,7 +144,18 @@ async function handleLogin() {
             body: JSON.stringify({ email: email, password: password })
         });
         var data = await res.json();
-        if (res.ok) { state.user = data.user; state.token = data.token; showApp(); }
+        if (res.ok) { 
+            state.user = data.user; 
+            state.token = data.token; 
+            showApp(); 
+            if (data.emailPreviewUrl) {
+                setTimeout(function() {
+                    if(confirm("L'email di avviso login è stata generata! Vuoi aprirla nel browser per vederla?")) {
+                        window.open(data.emailPreviewUrl, '_blank');
+                    }
+                }, 300);
+            }
+        }
         else showAuthError(data.error || 'Errore di login');
     } catch (e) { showAuthError('Errore di rete: il backend è attivo?'); }
 }

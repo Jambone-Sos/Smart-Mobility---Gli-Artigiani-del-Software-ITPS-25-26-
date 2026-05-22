@@ -83,7 +83,9 @@ async function sendLoginAlertEmail(email, nome) {
         });
 
         console.log(`📧 [Email Inviata] Avviso Login a ${email}`);
-        console.log("🔗 URL Anteprima Email: %s", nodemailer.getTestMessageUrl(info));
+        const previewUrl = nodemailer.getTestMessageUrl(info);
+        console.log("🔗 URL Anteprima Email: %s", previewUrl);
+        return previewUrl;
     } catch (err) {
         console.error("Errore durante l'invio dell'email di login:", err);
     }
