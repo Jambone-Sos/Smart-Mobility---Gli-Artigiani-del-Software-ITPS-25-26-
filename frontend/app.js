@@ -174,7 +174,18 @@ async function handleRegister() {
     try {
         var res = await fetch(API_BASE + '/utenti/registrazione', { method: 'POST', body: formData });
         var data = await res.json();
-        if (res.ok) { state.user = data.user; state.token = data.token; showApp(); }
+        if (res.ok) { 
+            state.user = data.user; 
+            state.token = data.token; 
+            showApp(); 
+            if (data.emailPreviewUrl) {
+                setTimeout(function() {
+                    if(confirm("L'email di benvenuto è stata generata! Vuoi aprirla nel browser per vederla?")) {
+                        window.open(data.emailPreviewUrl, '_blank');
+                    }
+                }, 300);
+            }
+        }
         else showAuthError(data.error || 'Errore durante la registrazione');
     } catch (e) { showAuthError('Errore di rete: il backend è attivo?'); }
 }

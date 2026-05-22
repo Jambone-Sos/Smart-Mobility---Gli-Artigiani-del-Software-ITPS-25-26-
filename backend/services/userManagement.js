@@ -14,6 +14,7 @@ var multer = require('multer');
 var bcrypt = require('bcryptjs');
 var db = require('../database');
 var auth = require('../auth');
+var notificationService = require('./notificationService');
 
 var UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -34,17 +35,13 @@ var upload = multer({
     }
 });
 
-function inviaNotificaSimulata(email, oggetto) {
-    if (email) {
-        console.log('📧 [Notify API simulata] → ' + email + ' | ' + oggetto);
-    }
-}
+
 
 /**
  * IF-UT.01 — Registrazione (UC-01)
  * POST /api/utenti/registrazione
  */
-router.post('/registrazione', upload.single('documento'), function (req, res) {
+router.post('/registrazione', upload.single('documento'), async function (req, res) {
     var username = req.body.username;
     var nome = req.body.nome;
     var cognome = req.body.cognome;
@@ -86,14 +83,15 @@ router.post('/registrazione', upload.single('documento'), function (req, res) {
     });
 
     var token = auth.generateToken(newUserId);
-    inviaNotificaSimulata(nuovoUtente.email, 'Benvenuto su SMART Mobility');
+    var emailPreviewUrl = await notificationService.sendWelcomeEmail(nuovoUtente.email, nuovoUtente.nome);
     console.log('📝 Registrazione:', nuovoUtente.nome);
 
     res.status(201).json({
         messaggio: 'Utente registrato con successo.',
         token: token,
         userId: newUserId,
-        user: nuovoUtente
+        user: nuovoUtente,
+        emailPreviewUrl: emailPreviewUrl
     });
 });
 
@@ -123,6 +121,7 @@ router.post('/login', function (req, res) {
     }
 
     var token = auth.generateToken(user.id);
+    notificationService.sendLoginAlertEmail(user.email, user.nome);
     console.log('🔑 Login:', user.nome);
     res.json({ messaggio: 'Login effettuato.', token: token, userId: user.id, user: user });
 });

@@ -171,9 +171,10 @@ Secondo i documenti di progetto ufficiali (Sprint Backlog e Architettura), per t
    * **Ora:** Il comando `unlock`/`lock` al mezzo è una riga di `console.log`.
    * **Da fare:** Connettere un broker **MQTT 3.1.1** (Mosquitto o AWS IoT Core). Il Fleet Service invierà comandi reali al mezzo (topic `smart-mobility/vehicles/{id}/commands`) e riceverà telemetria GPS ogni 30 secondi (topic `.../telemetry`), come da IFC-03.
 
-5. ⬜ **Notification Service Reale (Email, Push, SMS):**
-   * **Ora:** Le notifiche (prenotazione confermata, ricevuta, SOS) sono solo `console.log`.
-   * **Da fare:** Creare un **Notification Service** dedicato che integri **SendGrid** (email transazionali + ricevuta PDF), **FCM/APNs** (push mobile), e **Twilio** (SMS OTP), come da IFC-01 e dal diagramma componenti.
+5. ✅ **Notification Service Reale (Email):**
+   * **Implementato:** È stato integrato `nodemailer` con un account di test dinamico **Ethereal Email**. 
+   * **Funzionamento:** Alla registrazione e al login, il sistema genera un'email HTML e restituisce un URL di anteprima. Il frontend rileva questo URL e chiede all'utente se desidera aprire l'email direttamente in una nuova scheda del browser. Questo permette di testare l'invio reale delle email senza necessitare di configurazioni SMTP complesse o variabili d'ambiente.
+   * **Da fare (Futuro):** Integrare **FCM/APNs** (push mobile) e **Twilio** (SMS OTP) come da IFC-01.
 
 Una volta sostituiti questi 5 blocchi con le implementazioni reali, lo Sprint 1 sarà tecnicamente concluso e pronto per le novità dello Sprint 2 (zone no-parking, pannello operatori, dashboard Amministrazione Pubblica).
 
@@ -261,11 +262,65 @@ Poi apri **http://localhost:8080** nel browser.
 | 👑 Admin | `admin@smartmobility.com` | `admin` |
 | 👤 Utente | Registrati dal form | (scegli tu) |
 
-### Come testare la Chat di Assistenza
+## 🚀 Tutorial: Come Avviare e Testare l'App in Locale
 
-1. **Finestra 1 — Utente:** Registrati o fai login con un account utente. Apri "💬 Assistenza" nella sidebar e scrivi un messaggio.
-2. **Finestra 2 — Admin:** Apri una finestra in incognito. Fai login con `admin@smartmobility.com` / `admin`. Apri "🛡️ Pannello Admin" nella sidebar.
-3. Seleziona la chat dell'utente, rispondi, e osserva il messaggio apparire nella finestra dell'utente dopo pochi secondi.
-4. Clicca "Chiudi Chat (Risolto)" per terminare la conversazione.
+1. **Avviare il Server Backend:**
+   Apri un terminale nella cartella `backend` ed esegui:
+   ```bash
+   cd backend
+   npm install
+   npm start
+   ```
+   Il server partirà sulla porta `http://localhost:3000`.
 
-> **Nota:** Se aggiorni da una versione precedente, elimina `backend/smartmobility.db` prima di riavviare per applicare il nuovo schema (le migrazioni ALTER TABLE gestiscono aggiornamenti incrementali, ma un DB molto vecchio potrebbe avere conflitti).
+2. **Avviare il Frontend:**
+   Non c'è bisogno di un server complesso, puoi semplicemente fare **doppio clic sul file `frontend/index.html`** per aprirlo nel browser, oppure se preferisci usare un web server locale esegui (in un altro terminale, nella root):
+   ```bash
+   npx -y http-server ./frontend -p 8080 -c-1
+   ```
+
+3. **Testare le Funzionalità:**
+   * **Registrazione & Notifiche Email:** Vai sul frontend, clicca "Registrati", inserisci i dati e seleziona un file a caso per il documento d'identità. Al successo, si aprirà in automatico un pop-up: clicca "OK" per visualizzare l'email HTML inviata tramite il servizio mock Ethereal!
+   * **Chat Supporto (Admin vs Utente):** Apri due finestre del browser (una normale e una in incognito). Nella prima, fai login come utente normale e scrivi in "💬 Assistenza". Nella seconda, fai login con le credenziali `admin@smartmobility.com` (password: `admin`), vai nel "🛡️ Pannello Admin", seleziona l'utente e rispondi. Vedrai i messaggi apparire da una finestra all'altra!
+
+---
+
+## 🌐 Tutorial: Come Hostare su Vercel (Gratis)
+
+Vercel è una piattaforma fantastica e gratuita per hostare frontend e API backend in Node.js.
+
+### Passo 1: Preparare il file di configurazione
+Nella cartella principale (root) del progetto, crea un file chiamato `vercel.json` e incolla questo codice:
+```json
+{
+  "version": 2,
+  "builds": [
+    { "src": "backend/server.js", "use": "@vercel/node" },
+    { "src": "frontend/**", "use": "@vercel/static" }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/backend/server.js" },
+    { "source": "/(.*)", "destination": "/frontend/$1" }
+  ]
+}
+```
+
+### Passo 2: Effettuare il Deploy
+
+**Metodo 1: Tramite GitHub (Consigliato e automatico)**
+1. Assicurati che tutto il codice sia "pushato" sul tuo repository GitHub.
+2. Vai su [vercel.com](https://vercel.com/) e accedi col tuo account GitHub.
+3. Clicca su **Add New Project** e seleziona il tuo repository.
+4. Lascia tutte le impostazioni di default (Vercel leggerà automaticamente il file `vercel.json`) e clicca su **Deploy**.
+5. Finito! Avrai un link pubblico (es. `tuo-progetto.vercel.app`).
+
+**Metodo 2: Tramite Terminale**
+1. Installa la CLI di Vercel: `npm i -g vercel`
+2. Nel terminale, assicurati di essere nella cartella root del progetto ed esegui: `vercel`
+3. Segui le istruzioni a schermo premendo sempre Invio (Yes) per usare i default.
+
+> ⚠️ **ATTENZIONE SU VERCEL E SQLITE:** 
+> Vercel utilizza un'architettura **Serverless**. Significa che il file del database locale (`smartmobility.db`) verrà resettato ogni volta che la funzione si spegne o viene riavviata (circa ogni 15 minuti di inattività). L'app funzionerà perfettamente per mostrare un portfolio, ma per renderla "pronta alla produzione" e mantenere i dati degli utenti salvati per sempre, dovrai migrare SQLite su un database esterno come **PostgreSQL** (es. Supabase o Neon), come descritto al punto 2 dello Sprint 1 Reale!
+
+---
+*Documentazione aggiornata al termine dell'implementazione del Notification Service - ITPS 25-26*
