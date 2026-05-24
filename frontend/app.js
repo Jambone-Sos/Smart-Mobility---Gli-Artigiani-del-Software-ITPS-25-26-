@@ -217,6 +217,8 @@ function showApp() {
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-screen').style.display = 'block';
     initMap();
+    /* Force Leaflet to recalculate container size after display:block */
+    if (state.map) state.map.invalidateSize();
     initMapStylePicker();
     loadVehicles();
     updateTopBar();
@@ -340,6 +342,7 @@ async function loadVehicles() {
 }
 
 function drawMarkers() {
+    if (!state.map || !state.vehicles) return;
     state.markers.forEach(function (m) { state.map.removeLayer(m); });
     state.markers = [];
 
@@ -791,10 +794,21 @@ async function handleRating() {
 
 async function handleSOS() {
     if (!confirm('Vuoi davvero inviare una chiamata di emergenza?')) return;
+
+    /* Try to get current GPS position (UC-18) */
+    var gpsPayload = {};
+    try {
+        var pos = await new Promise(function(resolve, reject) {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 });
+        });
+        gpsPayload = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    } catch (e) { /* GPS non disponibile — invio senza coordinate */ }
+
     try {
         var res = await fetch(API_BASE + '/supporto/sos', {
             method: 'POST',
-            headers: authHeaders()
+            headers: authHeaders(),
+            body: JSON.stringify(gpsPayload)
         });
         var data = await res.json();
         alert(data.messaggio);

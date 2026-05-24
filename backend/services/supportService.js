@@ -97,29 +97,42 @@ router.post('/admin/chats/:id/close', function (req, res) {
 });
 
 /**
- * IF-UT.16 — Chiamata SOS (Emergenza)
- * POST /api/support/call-sos
+ * IF-UT.16 — Chiamata SOS (Emergenza) — UC-18
+ * POST /api/supporto/sos
+ * Body: { lat?: number, lon?: number }
  */
-router.post('/call-sos', function (req, res) {
-    console.log('🚨 [SOS] Allarme emergenza attivato!');
-    
+router.post('/sos', function (req, res) {
+    var userId = req.userId;
+    var lat = req.body.lat || null;
+    var lon = req.body.lon || null;
+
+    var segnalazione = db.segnalazioniSos.create({ idUtente: userId, lat: lat, lon: lon });
+    console.log('🚨 [SOS] Emergenza da utente ' + userId + ' pos: ' + lat + ',' + lon);
+
     res.json({
-        messaggio: 'Allarme registrato. I servizi di soccorso sono stati allertati e la posizione è stata inviata.'
+        messaggio: 'Allarme SOS registrato. I servizi di soccorso sono stati allertati.',
+        segnalazioneId: segnalazione.id
     });
 });
 
 /**
- * IF-UT.13 — Recensione Corsa
- * POST /api/support/review
- * Body: { stelle: number }
+ * IF-UT.13 — Recensione Corsa — UC-UT.13
+ * POST /api/supporto/recensione
+ * Body: { stelle: number, idCorsa?: string }
  */
-router.post('/review', function (req, res) {
-    var stelle = req.body.stelle;
-    console.log('⭐ [RECENSIONE] Valutazione ricevuta:', stelle, 'stelle');
-    
-    res.json({
-        messaggio: 'Grazie per aver valutato il nostro servizio con ' + stelle + ' stelle!'
-    });
+router.post('/recensione', function (req, res) {
+    var userId = req.userId;
+    var stelle = parseInt(req.body.stelle);
+    var idCorsa = req.body.idCorsa || null;
+
+    if (!stelle || stelle < 1 || stelle > 5) {
+        return res.status(400).json({ error: 'Il campo stelle deve essere un numero da 1 a 5.' });
+    }
+
+    db.recensioni.create({ idUtente: userId, idCorsa: idCorsa, stelle: stelle });
+    console.log('⭐ [RECENSIONE] Utente ' + userId + ' → ' + stelle + ' stelle');
+
+    res.json({ messaggio: 'Grazie per aver valutato il nostro servizio con ' + stelle + ' stelle!' });
 });
 
 module.exports = router;

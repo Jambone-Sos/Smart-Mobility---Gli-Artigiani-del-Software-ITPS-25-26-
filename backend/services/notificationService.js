@@ -4,17 +4,15 @@ let transporter = null;
 
 async function getTransporter() {
     if (!transporter) {
-        // Creiamo dinamicamente un account di test su Ethereal in fase di esecuzione.
-        // Questo evita di dover impostare variabili d'ambiente.
-        const testAccount = await nodemailer.createTestAccount();
+        const testAccount = await Promise.race([
+            nodemailer.createTestAccount(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Ethereal timeout')), 4000))
+        ]);
         transporter = nodemailer.createTransport({
             host: "smtp.ethereal.email",
             port: 587,
-            secure: false, // true for 465, false for other ports
-            auth: {
-                user: testAccount.user, // generated ethereal user
-                pass: testAccount.pass, // generated ethereal password
-            },
+            secure: false,
+            auth: { user: testAccount.user, pass: testAccount.pass },
         });
         console.log("📨 Ethereal Email account pronto per i test!");
     }

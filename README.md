@@ -8,6 +8,18 @@ Il nostro obiettivo per lo **Sprint 1** era creare un sistema base funzionante p
 
 ## Changelog
 
+### ✅ Versione 1.3 — Mattia Di Tondo
+**Correzione bug e allineamento UML Sprint 1**
+
+Interventi effettuati:
+- **Bug fix login:** `notificationService` poteva bloccare il login per 30+ secondi attendendo Ethereal Email (servizio esterno). Aggiunto timeout di 4 s con `Promise.race` — il login risponde sempre entro pochi millisecondi anche offline.
+- **Veicoli sulla mappa:** aggiunto `map.invalidateSize()` dopo l'inizializzazione Leaflet per garantire che i marker vengano disegnati alla prima apertura; aggiunto null-guard in `drawMarkers()` per evitare crash se `state.vehicles` non è ancora caricato.
+- **Password admin:** il seed `seedAdmin()` generava un hash bcrypt non corretto. Ora usa `bcrypt.hashSync('Admin1234', 12)` calcolato a runtime — password aggiornata nel DB e nel codice.
+- **SOS (UC-18):** percorso API corretto da `/call-sos` a `/sos`; il frontend ora acquisisce le coordinate GPS prima di inviare l'allarme (UC-18 sequenza 2); il backend salva il record nella nuova tabella `segnalazioni_sos`.
+- **Recensioni (UC-UT.13):** percorso API corretto da `/review` a `/recensione`; le valutazioni vengono ora persistite nella nuova tabella `recensioni` (id\_utente, stelle, id\_corsa opzionale).
+- **UML alignment:** aggiunte tabelle `recensioni` e `segnalazioni_sos` al database per allineare il modello dati al diagramma delle classi v5.
+- **Decisione architetturale:** confermato **SQLite** (sql.js) come database per lo Sprint 1 — stabile, zero dipendenze esterne, persistente su file. La migrazione a PostgreSQL + PostGIS è documentata come blocco Sprint 2.
+
 ### ✅ Versione 1.2 — Chat di Assistenza & Pannello Amministratore
 **Sistema di chat persistente in tempo reale e account amministratore** — gli utenti possono ora comunicare con un operatore tramite una vera chat bidirezionale.
 
@@ -15,7 +27,7 @@ Interventi effettuati:
 
 - **Account Amministratore:** aggiunto il concetto di `ruolo` (`user` / `admin`) nella tabella `utenti`. Al primo avvio viene creato automaticamente un account admin di sistema:
   - **Email:** `admin@smartmobility.com`
-  - **Password:** `admin`
+  - **Password:** `Admin1234`
 - **Schema Database esteso:** create due nuove tabelle `chat_sessions` (sessioni di conversazione con stato aperta/chiusa) e `chat_messages` (singoli messaggi con mittente, testo e timestamp). Aggiunti metodi di utilità nel modulo `database.js` per gestire CRUD delle chat.
 - **Backend — Nuove API REST (`supportService.js`):**
   - `GET /api/supporto/chat` — l'utente recupera i messaggi della propria sessione attiva
@@ -159,9 +171,9 @@ Secondo i documenti di progetto ufficiali (Sprint Backlog e Architettura), per t
    * **Ora:** Il documento d'identità viene caricato in locale nella cartella `uploads/` tramite multer.
    * **Da fare:** Collegare un vero **Object Storage S3-compatible** (AWS S3 o MinIO). Le foto non andranno nel file system locale, ma in un magazzino sicuro con URL pre-firmati a scadenza (max 15 min), come specificato nel modello dati della documentazione.
 
-2. ⬜ **PostgreSQL + Redis al posto di SQLite (Architettura):**
-   * **Ora:** Usiamo `sql.js` con file `smartmobility.db` — persistente e funzionante per lo sviluppo.
-   * **Da fare:** Migrare su **PostgreSQL 16 + PostGIS** (per le query geospaziali sulle zone) e **Redis 7** (cache sessioni JWT, posizioni GPS live con TTL 5 s, stato prenotazioni). Questo è necessario per reggere il carico di produzione.
+2. ⬜ **PostgreSQL + Redis (Sprint 2 — produzione):**
+   * **Ora (decisione confermata Sprint 1):** Usiamo **SQLite** (`sql.js` su file `smartmobility.db`) — zero dipendenze esterne, persistente, ottimale per lo sviluppo locale e le demo universitarie. Schema completo con 12 tabelle, migrazioni safe su DB esistente.
+   * **Da fare (Sprint 2):** Migrare su **PostgreSQL 16 + PostGIS** (query geospaziali per zone no-parking, IF-UT.19) e **Redis 7** (cache sessioni JWT, posizioni GPS live TTL 5 s, stato prenotazioni). Necessario per scalabilità a 5.000 sblocchi/sec (IQ-1).
 
 3. ⬜ **Payment Gateway Reale (Requisiti IF-UT.02 e IF-UT.11):**
    * **Ora:** Il saldo sale e scende nel database locale. I token di pagamento sono stringhe mock.
@@ -218,8 +230,8 @@ Tutte le rotte sono protette da JWT, tranne registrazione e login.
 |--------|----------|-------------|
 | `GET` | `/chat` | Messaggi della sessione chat attiva (utente) |
 | `POST` | `/chat` | Invia messaggio al supporto (utente) |
-| `POST` | `/call-sos` | Attiva allarme SOS |
-| `POST` | `/review` | Invia recensione (1-5 stelle) |
+| `POST` | `/sos` | Attiva allarme SOS con GPS (UC-18) |
+| `POST` | `/recensione` | Invia recensione 1-5 stelle (UC-UT.13) |
 | `GET` | `/admin/chats` | Lista sessioni aperte (🔒 solo admin) |
 | `GET` | `/admin/chats/:id` | Messaggi di una sessione (🔒 solo admin) |
 | `POST` | `/admin/chats/:id/reply` | Rispondi a una sessione (🔒 solo admin) |
@@ -259,7 +271,7 @@ Poi apri **http://localhost:8080** nel browser.
 
 | Ruolo | Email | Password |
 |-------|-------|----------|
-| 👑 Admin | `admin@smartmobility.com` | `admin` |
+| 👑 Admin | `admin@smartmobility.com` | `Admin1234` |
 | 👤 Utente | Registrati dal form | (scegli tu) |
 
 ## 🚀 Tutorial: Come Avviare e Testare l'App in Locale
@@ -281,7 +293,7 @@ Poi apri **http://localhost:8080** nel browser.
 
 3. **Testare le Funzionalità:**
    * **Registrazione & Notifiche Email:** Vai sul frontend, clicca "Registrati", inserisci i dati e seleziona un file a caso per il documento d'identità. Al successo, si aprirà in automatico un pop-up: clicca "OK" per visualizzare l'email HTML inviata tramite il servizio mock Ethereal!
-   * **Chat Supporto (Admin vs Utente):** Apri due finestre del browser (una normale e una in incognito). Nella prima, fai login come utente normale e scrivi in "💬 Assistenza". Nella seconda, fai login con le credenziali `admin@smartmobility.com` (password: `admin`), vai nel "🛡️ Pannello Admin", seleziona l'utente e rispondi. Vedrai i messaggi apparire da una finestra all'altra!
+   * **Chat Supporto (Admin vs Utente):** Apri due finestre del browser (una normale e una in incognito). Nella prima, fai login come utente normale e scrivi in "💬 Assistenza". Nella seconda, fai login con le credenziali `admin@smartmobility.com` (password: `Admin1234`), vai nel "🛡️ Pannello Admin", seleziona l'utente e rispondi. Vedrai i messaggi apparire da una finestra all'altra!
 
 ---
 

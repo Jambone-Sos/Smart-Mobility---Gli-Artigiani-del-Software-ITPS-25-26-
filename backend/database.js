@@ -143,6 +143,21 @@ function initSchema() {
             messaggio TEXT NOT NULL,
             data_invio TEXT NOT NULL DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS recensioni (
+            id TEXT PRIMARY KEY,
+            id_utente TEXT NOT NULL,
+            id_corsa TEXT,
+            stelle INTEGER NOT NULL CHECK(stelle BETWEEN 1 AND 5),
+            data_recensione TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS segnalazioni_sos (
+            id TEXT PRIMARY KEY,
+            id_utente TEXT NOT NULL,
+            lat REAL,
+            lon REAL,
+            timestamp_sos TEXT NOT NULL DEFAULT (datetime('now')),
+            stato TEXT NOT NULL DEFAULT 'aperta'
+        );
     `);
 
     /* Migrazioni sicure per DB esistenti (IF colonna già presente → ignorata) */
@@ -169,14 +184,11 @@ function initSchema() {
 }
 
 function seedAdmin() {
+    var bcrypt = require('bcryptjs');
     var admin = queryOne('SELECT * FROM utenti WHERE email = ?', ['admin@smartmobility.com']);
     if (!admin) {
-        // Usa un hash fittizio per 'admin' o crealo in fase di avvio. Qui usiamo direttamente l'hash di 'admin'.
-        // NOTA: bcrypt di 'admin' (generato da node). Lo genereremo come "$2a$10$wO3vF50QjA8B2.o1mR8B9OQ9kPZ9qKq4M3n8W1q7G2rZ0A3M3n8W"
-        // In userManagement c'è il bcrypt. Facciamo finta che 'admin' sia la password in chiaro per il seed se non usiamo bcrypt qua, 
-        // ma siccome auth controlla con bcrypt, dobbiamo inserire un hash valido.
-        // Hash di 'admin' (salt 10) = $2b$10$qH/RIt5W616XbI5J6D5Z.eX9UuTf0CXYG8N2rLw8w8.sR7r5M4L1u
-        var hashAdmin = '$2b$10$qH/RIt5W616XbI5J6D5Z.eX9UuTf0CXYG8N2rLw8w8.sR7r5M4L1u';
+        /* password: Admin1234 */
+        var hashAdmin = bcrypt.hashSync('Admin1234', 12);
         runSql(
             `INSERT INTO utenti (id, username, nome, cognome, email, password_hash, saldo, ruolo, stato)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -493,10 +505,37 @@ var chats = {
     }
 };
 
+var recensioni = {
+    create: function (data) {
+        assertReady();
+        var id = 'rec-' + Date.now();
+        runSql(
+            'INSERT INTO recensioni (id, id_utente, id_corsa, stelle) VALUES (?, ?, ?, ?)',
+            [id, data.idUtente, data.idCorsa || null, data.stelle]
+        );
+        return queryOne('SELECT * FROM recensioni WHERE id = ?', [id]);
+    },
+    findByUtente: function (userId) {
+        return queryAll('SELECT * FROM recensioni WHERE id_utente = ? ORDER BY data_recensione DESC', [userId]);
+    }
+};
+
+var segnalazioniSos = {
+    create: function (data) {
+        assertReady();
+        var id = 'sos-' + Date.now();
+        runSql(
+            'INSERT INTO segnalazioni_sos (id, id_utente, lat, lon) VALUES (?, ?, ?, ?)',
+            [id, data.idUtente, data.lat || null, data.lon || null]
+        );
+        return queryOne('SELECT * FROM segnalazioni_sos WHERE id = ?', [id]);
+    }
+};
+
 module.exports = {
     connectDB: connectDB,
     utenti: utenti, mezzi: mezzi, prenotazioni: prenotazioni, corse: corse,
     pagamenti: pagamenti, ricevute: ricevute, promozioni: promozioni, metodiPagamento: metodiPagamento,
     users: users, vehicles: vehicles, bookings: bookings, rides: rides,
-    chats: chats
+    chats: chats, recensioni: recensioni, segnalazioniSos: segnalazioniSos
 };
