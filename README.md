@@ -7,7 +7,7 @@
 Il sistema **SMART Mobility** è una piattaforma integrata di mobilità sostenibile per il Comune di Zootropolis. Consente agli utenti di localizzare, prenotare e utilizzare mezzi di trasporto in sharing (biciclette, monopattini, auto e motocicli elettrici) tramite un'applicazione mobile e offre strumenti avanzati di gestione e monitoraggio per gli operatori e per l'Amministrazione Pubblica.
 
 ## Architettura del Sistema
-Il progetto (in versione Sprint 1) è stato sviluppato seguendo un'architettura modulare:
+Il progetto (in versione Sprint 2) è stato sviluppato seguendo un'architettura modulare:
 - **Backend:** Node.js con framework Express. Architettura a microservizi (Auth, Payment, SOS, User Management) isolati in moduli separati.
 - **Database:** SQLite (tramite `sql.js`). Database relazionale per la gestione sicura di utenti (con password hashate via `bcrypt`), mezzi, prenotazioni e corse.
 - **Autenticazione:** Basata su JSON Web Token (JWT).
